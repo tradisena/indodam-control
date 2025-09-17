@@ -1,41 +1,24 @@
-# control.py — THB Indodam (REAL MT5) — final
-# - Serve index.html at "/"
-# - MT5 init+login real (default credential dari parametermu; bisa override ENV)
-# - Whitelist simbol: XAUUSDc, BTCUSDc (pilih via UI /api/symbol/select)
-# - Quotes multi-simbol, candles M1, order BUY/SELL (IOC → FOK), Close All, Breakeven
-# - Auto M1 tick + session/breakeven/cooldown (ringkas, aman)
-# - Endpoint diag /api/diag untuk cek cepat
-# - Port 5000
+# control.py — THB Indodam (NIC-N + memory, no DB)
+# Compat fix: gunakan @app.route(..., methods=[...]) + static serving + scheduler stabil
 
 from flask import Flask, request, jsonify, send_from_directory
 from threading import Thread, Event
-import os, time
-
-import MetaTrader5 as mt5  # pip install MetaTrader5
+import time, random, math, datetime, os
 
 app = Flask(__name__)
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# ====== PARAMETER DEFAULT (bisa override via ENV) ======
-DEFAULTS = {
-    "MT5_PATH":   r"C:\Program Files\MetaTrader 5\terminal64.exe",
-    "MT5_LOGIN":  "263084911",
-    "MT5_PASSWORD":"Lunas2025$$$",
-    "MT5_SERVER": "Exness-MT5Real37",
-    "MT5_SYMBOL": "XAUUSDc",          # default aktif
-}
-def CFG(key):
-    return os.environ.get(key) or DEFAULTS.get(key) or ""
-
-# ====== SETUP & STATE ======
+# ===================== SETUP (last-writer-wins) =====================
 SETUP = {
-    "symbols": ["XAUUSDc", "BTCUSDc"],
-    "symbol": CFG("MT5_SYMBOL"),
+    "symbol": "XAUUSDC",
     "auto_mode": False,
     "tpsm_auto": False,
     "tpsb_auto": False,
-    "abe_auto": False,
-    "sr": {"auto_entry_enabled": True, "near_pct": 0.10, "baseline": "ADR14"},
+    "abe_auto": False,              # Auto Break-Event basket close
+    "sr": {
+        "auto_entry_enabled": True, # [SR-GATE] master switch
+        "near_pct": 0.10,           # [SR-GATE] ganti batas persentase di sini
+        "baseline": "ADR14"         # "ADR14" | "DAY_RANGE"
+    },
     "auto_m1": {"enabled": True, "min_wait_sec": 60},
     "daily_target": 10.0, "daily_min": -10.0,
     "session": {
@@ -47,363 +30,288 @@ SETUP = {
         "be_min_profit": 0.10
     }
 }
+
+# ===================== STATE =====================
 STATE = {
-    "online": False, "locked": False,
+    "online": True, "locked": False,
+    "price": 0.0, "tick_dir": 0,
+    "equity": 1000.00, "margin_used": 0.0,
+    "vsl": 0.0, "best_pl": 0.0, "adds_done": 0,
     "timer": "00:00",
     "cooldown": False, "cooldown_until": 0.0,
+    "history_today": [],
+    "open_positions": [],
     "last_entry_ts": 0.0,
     "last_m1_minute": None,
+    # session
     "session_active": False, "session_start_ts": 0.0,
-    "session_be_hit": False, "session_peak_pl": 0.0,
+    "session_be_hit": False, "session_peak_pl": 0.0
 }
-stop_flag = Event()
 
-# ====== MT5 HELPERS ======
-def mt5_init():
-    path = CFG("MT5_PATH")
-    try:
-        ok = mt5.initialize(path) if path else mt5.initialize()
-    except Exception as e:
-        print("[MT5] initialize EXC:", e, flush=True)
-        return False
-    if not ok:
-        print("[MT5] initialize FAIL:", mt5.last_error(), flush=True)
-        return False
-    return maybe_login()
+# ===================== Helpers =====================
+def now_ts(): return time.time()
+def fmt_mmss(rem):
+    rem = max(0, int(rem)); m=rem//60; s=rem%60
+    return f"{m:02d}:{s:02d}"
+def free_margin(): return max(0.0, STATE["equity"] - STATE["margin_used"])
+def open_count(): return len(STATE["open_positions"])
+def total_lot(): return sum(p["lot"] for p in STATE["open_positions"])
 
-def maybe_login():
-    ai = mt5.account_info()
-    if ai is not None:
-        print(f"[MT5] already logged-in: {ai.login} / {ai.server}", flush=True)
-        return True
-    login = CFG("MT5_LOGIN")
-    password = CFG("MT5_PASSWORD")
-    server = CFG("MT5_SERVER")
-    if not (login and password and server):
-        print("[MT5] creds missing", flush=True)
-        return False
-    try:
-        ok = mt5.login(int(login), password=password, server=server)
-    except Exception as e:
-        print("[MT5] login EXC:", e, flush=True)
-        ok = False
-    print("[MT5] login:", "OK" if ok else f"FAIL {mt5.last_error()}", flush=True)
-    return ok
-
-def symbol_ensure(symbol):
-    si = mt5.symbol_info(symbol)
-    if si and si.visible:
-        return True
-    if si and not si.visible:
-        mt5.symbol_select(symbol, True)
-        si = mt5.symbol_info(symbol)
-        if si and si.visible:
-            return True
-    base = symbol.rstrip(".")
-    try:
-        cands = mt5.symbols_get(f"{base}*") or []
-    except Exception:
-        cands = []
-    for c in cands:
-        if c.visible or mt5.symbol_select(c.name, True):
-            print(f"[SYMBOL] fallback -> {c.name}", flush=True)
-            SETUP["symbol"] = c.name
-            return True
-    print(f"[SYMBOL] not visible: {symbol}", flush=True)
-    return False
-
-def tick(symbol):
-    try:
-        return mt5.symbol_info_tick(symbol)
-    except: return None
-
-def positions(symbol=None):
-    try:
-        if symbol: return mt5.positions_get(symbol=symbol) or []
-        return mt5.positions_get() or []
-    except: return []
-
-def candles(symbol, tf, count):
-    tf_map = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15,
-              "M30": mt5.TIMEFRAME_M30, "H1": mt5.TIMEFRAME_H1}
-    timeframe = tf_map.get(tf, mt5.TIMEFRAME_M1)
-    try:
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
-    except: rates = None
-    out = []
-    if rates is not None:
-        for r in rates:
-            out.append({
-                "time": int(r['time']),
-                "open": float(r['open']),
-                "high": float(r['high']),
-                "low":  float(r['low']),
-                "close":float(r['close'])
-            })
-    return out
-
-def account_snapshot():
-    ai = mt5.account_info()
-    if not ai: return 0.0, 0.0, 0.0
-    return float(ai.equity), float(ai.margin), float(ai.margin_free)
-
-def float_pl(symbol):
-    pos = positions(symbol)
-    t = tick(symbol)
-    if t is None: return 0.0
-    price_now = t.bid if any(p.type==mt5.POSITION_TYPE_SELL for p in pos) else t.ask
+def float_pl_agg():
     pl = 0.0
-    for p in pos:
-        if p.type == mt5.POSITION_TYPE_BUY:
-            pl += (price_now - p.price_open) * p.volume * p.contract_size
-        else:
-            pl += (p.price_open - price_now) * p.volume * p.contract_size
-    return float(pl)
+    for p in STATE["open_positions"]:
+        diff = (STATE["price"] - p["entry"])
+        pl += diff * (1 if p["side"] == "BUY" else -1) * 100  # skala simulasi
+    return round(pl, 2)
 
-def open_count(symbol): return len(positions(symbol))
-def total_lot(symbol):   return sum(p.volume for p in positions(symbol))
-
-def nearest_sr_pct(symbol):
-    data = candles(symbol, "M1", 30)
-    if len(data) < 5: return 1.0
-    lows = [d["low"] for d in data[-15:]]
-    highs= [d["high"] for d in data[-15:]]
-    s = min(lows); r = max(highs)
-    t = tick(symbol)
-    if not t: return 1.0
-    price = t.last if t.last>0 else (t.bid or t.ask or 0.0)
-    dist = min(abs(price - s), abs(r - price))
-    baseline = max(1e-9, (r - s))
-    return dist / baseline if baseline>0 else 1.0
-
-def sr_gate_ok(symbol):
-    if not SETUP["sr"]["auto_entry_enabled"]:
-        return True
-    pct = nearest_sr_pct(symbol)
-    ok = (pct <= SETUP["sr"]["near_pct"])
-    return ok
-
-def order_send_with_fallback(symbol, side, lot):
-    if not symbol_ensure(symbol): return (False, "symbol-not-visible")
-    t = tick(symbol)
-    if not t: return (False, "no-tick")
-    price = t.ask if side=="BUY" else t.bid
-    otype = mt5.ORDER_TYPE_BUY if side=="BUY" else mt5.ORDER_TYPE_SELL
-    # IOC
-    req = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": symbol,
-        "volume": float(lot),
-        "type": otype,
-        "price": price,
-        "deviation": 50,
-        "magic": 556677,
-        "comment": "THB Indodam",
-        "type_filling": mt5.ORDER_FILLING_IOC,
-    }
-    res = mt5.order_send(req)
-    if res and res.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED):
-        return (True, f"OK:{res.retcode}")
-    # FOK fallback
-    req["type_filling"] = mt5.ORDER_FILLING_FOK
-    res2 = mt5.order_send(req)
-    ok = res2 and res2.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED)
-    return (bool(ok), (res2.comment if res2 else "send-failed"))
-
-def close_all(symbol, reason="manual"):
-    pos = positions(symbol)
-    n = 0
-    for p in pos:
-        side = "SELL" if p.type==mt5.POSITION_TYPE_BUY else "BUY"
-        t = tick(symbol)
-        if not t: continue
-        price = (t.bid if side=="SELL" else t.ask)
-        req = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "position": p.ticket,
-            "symbol": symbol,
-            "volume": p.volume,
-            "type": (mt5.ORDER_TYPE_SELL if side=="SELL" else mt5.ORDER_TYPE_BUY),
-            "price": price,
-            "deviation": 50,
-            "magic": 556677,
-            "comment": f"close-all:{reason}",
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        res = mt5.order_send(req)
-        if res and res.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED):
-            n += 1
-    return n
-
-# ====== COOLDOWN/SESSION/AUTO (ringkas) ======
-def set_cooldown(sec):
-    STATE["cooldown"] = True
-    STATE["cooldown_until"] = time.time() + sec
-
-def cooldown_tick():
-    if STATE["cooldown"]:
-        rem = max(0, STATE["cooldown_until"] - time.time())
-        m,s = int(rem)//60, int(rem)%60
-        STATE["timer"] = f"{m:02d}:{s:02d}"
-        if rem<=0:
-            STATE["cooldown"] = False
-            STATE["cooldown_until"] = 0
-    else:
-        STATE["timer"] = "00:00"
-
-def begin_session_if_needed(symbol):
-    if not STATE["session_active"] and open_count(symbol)>0:
+def begin_session_if_needed():
+    if not STATE["session_active"] and open_count() > 0:
         STATE["session_active"] = True
-        STATE["session_start_ts"] = time.time()
+        STATE["session_start_ts"] = now_ts()
         STATE["session_be_hit"] = False
         STATE["session_peak_pl"] = 0.0
 
-def end_session():
+def end_session(reason="ended"):
     STATE["session_active"] = False
     STATE["session_start_ts"] = 0.0
     STATE["session_be_hit"] = False
     STATE["session_peak_pl"] = 0.0
-    set_cooldown(15)
+    set_cooldown(15, reason="session")  # jeda pendek setelah sesi
+    print(f"[SESSION] Ended by: {reason}", flush=True)
 
-def try_break_event(symbol):
+def set_cooldown(sec:int, reason="general"):
+    STATE["cooldown"] = True
+    STATE["cooldown_until"] = now_ts() + sec
+    print(f"[COOLDOWN] {sec}s by {reason}", flush=True)
+
+def cooldown_tick():
+    if STATE["cooldown"]:
+        rem = STATE["cooldown_until"] - now_ts()
+        if rem <= 0:
+            STATE["cooldown"] = False
+            STATE["cooldown_until"] = 0
+            rem = 0
+        STATE["timer"] = fmt_mmss(rem)
+    else:
+        STATE["timer"] = "00:00"
+
+# ===================== Market sim (gantikan dgn MT5) =====================
+def simulate_price():
+    last = STATE["price"] or 2000.0
+    step = random.uniform(-0.3, 0.3)
+    newp = max(10.0, last + step)
+    STATE["tick_dir"] = 1 if newp > last else (-1 if newp < last else 0)
+    STATE["price"] = round(newp, 2)
+
+def get_candles(symbol:str, tf:str, count:int):
+    base = STATE["price"] or 2000.0
+    out, nowi = [], int(time.time())
+    for i in range(count):
+        t = nowi - (count - i)*60
+        o = base + math.sin((i%24)/24*2*math.pi)*0.8 + random.uniform(-0.3,0.3)
+        c = o + random.uniform(-0.6,0.6)
+        h = max(o,c) + random.uniform(0,0.4)
+        l = min(o,c) - random.uniform(0,0.4)
+        out.append({"time": t, "open": round(o,2), "high": round(h,2),
+                    "low": round(l,2), "close": round(c,2)})
+        base = c
+    return out
+
+# ===================== Orders (gantikan dgn MT5) =====================
+def place_order(side:str, lot:float):
+    if STATE["locked"] or STATE["cooldown"]:
+        return False, "locked/cooldown"
+    entry = STATE["price"]
+    STATE["open_positions"].append({"side": side, "lot": lot, "entry": entry, "time_open": now_ts()})
+    STATE["margin_used"] += lot * 50.0
+    STATE["last_entry_ts"] = now_ts()
+    begin_session_if_needed()
+    print(f"[ORDER] {side} {lot} @ {entry}", flush=True)
+    return True, "ok"
+
+def close_all_positions(reason="manual"):
+    n = open_count()
+    if n == 0: return 0
+    pl_total = float_pl_agg()
+    for p in STATE["open_positions"]:
+        STATE["history_today"].append({
+            "symbol": SETUP["symbol"], "side": p["side"], "lot": p["lot"],
+            "start": round(p["entry"],2), "close": round(STATE["price"],2),
+            "profit": round((STATE["price"]-p["entry"])*(1 if p["side"]=="BUY" else -1)*100,2),
+            "time_utc": datetime.datetime.utcnow().isoformat(timespec="seconds")+"Z"
+        })
+    STATE["equity"] += max(-1000, min(1000, pl_total))*0.01
+    STATE["margin_used"] = 0.0
+    STATE["open_positions"].clear()
+    print(f"[CLOSE-ALL] {n} pos | reason={reason} | pl={pl_total}", flush=True)
+    return n
+
+# ===================== Signals & Gates =====================
+def m1_signal():
+    if SETUP["tpsm_auto"]: return "BUY"
+    if SETUP["tpsb_auto"]: return "SELL"
+    return "BUY" if random.random() > 0.5 else "SELL"
+
+def nearest_sr_distance(price:float):
+    win = get_candles(SETUP["symbol"], "M1", 15)
+    s = min(d["low"] for d in win); r = max(d["high"] for d in win)
+    dist = min(abs(price - s), abs(r - price))
+    baseline = (r - s) if SETUP["sr"]["baseline"] == "DAY_RANGE" else max(0.01, (r - s))
+    pct = dist / baseline if baseline > 0 else 1.0
+    return dist, pct
+
+def sr_gate_ok():
+    if not SETUP["sr"]["auto_entry_enabled"]:
+        return True, "disabled"
+    dist, pct = nearest_sr_distance(STATE["price"])
+    ok = (pct <= SETUP["sr"]["near_pct"])
+    if not ok:
+        print(f"[SR-GATE] deny (dist={dist:.2f}, pct={pct:.2f}, thr={SETUP['sr']['near_pct']:.2f})", flush=True)
+    else:
+        print(f"[SR-GATE] pass (pct={pct:.2f})", flush=True)
+    return ok, "pass" if ok else "deny"
+
+# ===================== Break-Event (basket close-all) =====================
+def try_break_event():
     if not SETUP["abe_auto"]: return
-    if open_count(symbol) < SETUP["session"]["min_positions_for_be"]: return
-    pl = float_pl(symbol)
+    if open_count() < SETUP["session"]["min_positions_for_be"]: return
+    pl = float_pl_agg()
     if pl >= SETUP["session"]["be_min_profit"]:
-        close_all(symbol, reason="break-event")
+        close_all_positions(reason="break-event")
         STATE["session_be_hit"] = True
-        end_session()
-        set_cooldown(10)
+        end_session("BE-hit")
+        set_cooldown(10, reason="BE")
 
-def session_tick(symbol):
+# ===================== Session watcher =====================
+def session_tick():
     if not STATE["session_active"]: return
-    elapsed = time.time() - STATE["session_start_ts"]
-    pl = float_pl(symbol)
-    if pl > STATE["session_peak_pl"]: STATE["session_peak_pl"] = pl
-    if pl >= SETUP["session"]["profit_target"]:
-        close_all(symbol, "session-profit"); end_session(); return
-    if pl <= SETUP["session"]["loss_limit"]:
-        close_all(symbol, "session-loss"); end_session(); return
-    if elapsed >= SETUP["session"]["max_duration_sec"]:
-        close_all(symbol, "session-timeout"); end_session(); return
+    elapsed = now_ts() - STATE["session_start_ts"]
+    pl = float_pl_agg()
+    STATE["session_peak_pl"] = max(STATE["session_peak_pl"], pl)
 
-def auto_m1_tick(symbol):
+    if pl >= SETUP["session"]["profit_target"]:
+        close_all_positions(reason="session-profit"); end_session("profit-target"); return
+    if pl <= SETUP["session"]["loss_limit"]:
+        close_all_positions(reason="session-loss"); end_session("loss-limit"); return
+    if elapsed >= SETUP["session"]["max_duration_sec"]:
+        close_all_positions(reason="session-timeout"); end_session("timeout"); return
+
+# ===================== Auto-entry M1 tiap menit =====================
+def auto_m1_tick():
     if not (SETUP["auto_mode"] and SETUP["auto_m1"]["enabled"]): return
-    if STATE["locked"] or STATE["cooldown"] or open_count(symbol)>0: return
+    if STATE["locked"] or STATE["cooldown"] or open_count()>0: return
+
     minute = int(time.time() // 60)
     if STATE["last_m1_minute"] == minute: return
-    if time.time() - STATE["last_entry_ts"] < SETUP["auto_m1"]["min_wait_sec"]: return
-    if not sr_gate_ok(symbol):
-        STATE["last_m1_minute"] = minute; return
-    side = "BUY" if SETUP["tpsm_auto"] else ("SELL" if SETUP["tpsb_auto"] else "BUY")
-    ok, _ = order_send_with_fallback(symbol, side, lot=0.01)
-    if ok:
-        STATE["last_m1_minute"] = minute
-        STATE["last_entry_ts"] = time.time()
-        begin_session_if_needed(symbol)
+    if now_ts() - STATE["last_entry_ts"] < SETUP["auto_m1"]["min_wait_sec"]: return
 
-# ====== ENGINE LOOP ======
+    ok, _ = sr_gate_ok()
+    if not ok:
+        STATE["last_m1_minute"] = minute  # tandai supaya tidak spam di menit ini
+        return
+
+    side = m1_signal()
+    place_order(side, lot=0.01)
+    STATE["last_m1_minute"] = minute
+
+# ===================== Engine loop (scheduler stabil) =====================
+stop_flag = Event()
+
 def engine_loop():
-    nxt = time.time()
+    price_next = logic_next = time.time()
     while not stop_flag.is_set():
+        now = time.time()
+
+        # update harga ~2 Hz
+        if now >= price_next:
+            simulate_price()
+            price_next = now + 0.5
+
+        # housekeeping 10–20 Hz
         cooldown_tick()
-        try:
-            if time.time() >= nxt:
-                sym = SETUP["symbol"]
-                auto_m1_tick(sym)
-                try_break_event(sym)
-                session_tick(sym)
-                nxt = time.time() + 1.0
-        except Exception as e:
-            print("[ENGINE]", e, flush=True)
+        try_break_event()
+        session_tick()
+
+        # logic (auto M1) ~1 Hz — guard menit di dalam
+        if now >= logic_next:
+            auto_m1_tick()
+            logic_next = now + 1.0
+
         time.sleep(0.01)
 
-# ====== UI / STATIC ======
+# ===================== STATIC / UI ROUTES =====================
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 @app.route("/", methods=["GET"])
 def root():
+    # Pastikan index.html berada di direktori yang sama dengan control.py
     return send_from_directory(BASE_DIR, "index.html")
 
 @app.route("/static/<path:path>", methods=["GET"])
 def static_files(path):
-    return send_from_directory(os.path.join(BASE_DIR, "static"), path)
+    # Jika kamu punya folder static/ untuk aset CSS/JS tambahan
+    static_dir = os.path.join(BASE_DIR, "static")
+    return send_from_directory(static_dir, path)
 
-# ====== API ======
+# ===================== API =====================
 @app.route("/api/status", methods=["GET"])
 def api_status():
-    # MT5 siap?
-    online = False
-    try: online = (mt5.terminal_info() is not None)
-    except: online = False
+    daily_pl = float(sum(h.get("profit", 0.0) for h in STATE.get("history_today", [])))
+    resp = {
+        "online": bool(STATE.get("online", False)),
+        "locked": bool(STATE.get("locked", False)),
+        "mode": "SIDE",
+        "auto_mode": bool(SETUP.get("auto_mode", False)),
 
-    symbol = SETUP["symbol"]
-    if online and symbol_ensure(symbol):
-        t  = tick(symbol)
-        eq, margin, free = account_snapshot()
-        oc = open_count(symbol)
-        tl = total_lot(symbol)
-        pl = float_pl(symbol)
-        price = 0.0; tick_dir = 0
-        if t:
-            price = (t.last if t.last>0 else (t.bid or t.ask or 0.0))
-            tick_dir = 1 if (t.ask - t.bid) > 0 else (-1 if (t.ask - t.bid) < 0 else 0)
+        "symbol": SETUP.get("symbol", "XAUUSDC"),
+        "price": float(STATE.get("price", 0.0)),
+        "tick_dir": int(STATE.get("tick_dir", 0)),
 
-        quotes = []
-        for symq in SETUP["symbols"]:
-            if not symbol_ensure(symq): continue
-            tq = tick(symq)
-            if tq:
-                quotes.append({"symbol": symq, "bid": round(tq.bid or 0.0, 2), "ask": round(tq.ask or 0.0, 2)})
+        "equity": round(float(STATE.get("equity", 0.0)),2),
+        "daily_pl": round(daily_pl,2),
+        "daily_target": float(SETUP.get("daily_target", 10.0)),
+        "daily_min": float(SETUP.get("daily_min", -10.0)),
 
-        return jsonify({
-            "online": True, "locked": STATE["locked"], "mode": "SIDE",
-            "auto_mode": SETUP["auto_mode"], "symbol": symbol,
-            "price": round(price,2), "tick_dir": tick_dir,
-            "equity": round(eq,2), "daily_pl": 0.00,
-            "daily_target": SETUP["daily_target"], "daily_min": SETUP["daily_min"],
-            "free_margin": round(free,2),
-            "tpsm_auto": SETUP["tpsm_auto"], "tpsb_auto": SETUP["tpsb_auto"], "abe_auto": SETUP["abe_auto"],
-            "vsl": 0.0, "best_pl": STATE["session_peak_pl"], "adds_done": 0, "timer": STATE["timer"],
-            "total_lot": round(tl,2), "open_count": oc, "float_pl": round(pl,2),
-            "cooldown": STATE["cooldown"], "cooldown_remain": STATE["timer"],
-            "open_positions": [
-                {
-                    "side": ("BUY" if p.type==mt5.POSITION_TYPE_BUY else "SELL"),
-                    "lot": p.volume, "entry": p.price_open,
-                    "pl": ((price - p.price_open) if p.type==mt5.POSITION_TYPE_BUY else (p.price_open - price)) * p.volume * p.contract_size
-                } for p in positions(symbol)
-            ],
-            "history_today": [],
-            "quotes": quotes
-        })
+        "free_margin": round(free_margin(),2),
 
-    # OFFLINE
-    return jsonify({
-        "online": False, "locked": STATE["locked"], "mode": "SIDE",
-        "auto_mode": SETUP["auto_mode"], "symbol": SETUP["symbol"],
-        "price": 0.0, "tick_dir": 0, "equity": 0.0, "daily_pl": 0.0,
-        "daily_target": SETUP["daily_target"], "daily_min": SETUP["daily_min"],
-        "free_margin": 0.0,
-        "tpsm_auto": SETUP["tpsm_auto"], "tpsb_auto": SETUP["tpsb_auto"], "abe_auto": SETUP["abe_auto"],
-        "vsl": 0.0, "best_pl": 0.0, "adds_done": 0, "timer": STATE["timer"],
-        "total_lot": 0.0, "open_count": 0, "float_pl": 0.0,
-        "cooldown": STATE["cooldown"], "cooldown_remain": STATE["timer"],
-        "open_positions": [], "history_today": [], "quotes": []
-    })
+        "tpsm_auto": bool(SETUP.get("tpsm_auto", False)),
+        "tpsb_auto": bool(SETUP.get("tpsb_auto", False)),
+        "abe_auto":  bool(SETUP.get("abe_auto", False)),
+
+        "vsl": float(STATE.get("vsl", 0.0)),
+        "best_pl": float(STATE.get("session_peak_pl", 0.0)),
+        "adds_done": int(STATE.get("adds_done", 0)),
+        "timer": STATE.get("timer", "00:00"),
+
+        "total_lot": round(total_lot(),2),
+        "open_count": open_count(),
+        "float_pl": float_pl_agg(),
+        "cooldown": bool(STATE.get("cooldown", False)),
+        "cooldown_remain": fmt_mmss(STATE.get("cooldown_until",0)-now_ts()) if STATE.get("cooldown") else "00:00",
+
+        "open_positions": STATE.get("open_positions", []),
+        "history_today": STATE.get("history_today", []),
+
+        # quotes dummy
+        "quotes": [
+            {"symbol": SETUP.get("symbol","XAUUSDC"),
+             "bid": round(float(STATE.get("price",0))-0.02,2),
+             "ask": round(float(STATE.get("price",0))+0.02,2)}
+        ]
+    }
+    return jsonify(resp)
 
 @app.route("/api/candles", methods=["GET"])
 def api_candles():
-    sym = request.args.get("symbol", SETUP["symbol"])
+    sym = request.args.get("symbol", SETUP.get("symbol","XAUUSDC"))
     tf  = request.args.get("tf", "M1")
     cnt = int(request.args.get("count", 120))
-    return jsonify(candles(sym, tf, cnt))
+    return jsonify(get_candles(sym, tf, cnt))
 
 @app.route("/api/symbol/select", methods=["POST"])
 def api_symbol_select():
     sym = (request.get_json(force=True) or {}).get("symbol") or SETUP["symbol"]
-    if sym not in SETUP["symbols"]:
-        return jsonify({"ok": False, "msg": "symbol not allowed"}), 400
     SETUP["symbol"] = sym
-    symbol_ensure(sym)
     return jsonify({"ok": True})
 
 @app.route("/api/strategy/toggle", methods=["POST"])
@@ -426,71 +334,61 @@ def api_abe():
     SETUP["abe_auto"] = bool((request.get_json(force=True) or {}).get("on"))
     return jsonify({"ok": True})
 
+@app.route("/api/strategy/sr", methods=["POST"])
+def api_sr():
+    body = request.get_json(force=True) or {}
+    if "enabled" in body: SETUP["sr"]["auto_entry_enabled"] = bool(body["enabled"])
+    if "near_pct" in body: SETUP["sr"]["near_pct"] = max(0.01, min(0.5, float(body["near_pct"])))
+    if "baseline" in body: SETUP["sr"]["baseline"] = str(body["baseline"])
+    return jsonify({"ok": True, "sr": SETUP["sr"]})
+
 @app.route("/api/action/buy", methods=["POST"])
 def api_buy():
     lot = float((request.get_json(force=True) or {}).get("lot", 0.01))
-    ok, msg = order_send_with_fallback(SETUP["symbol"], "BUY", lot)
-    begin_session_if_needed(SETUP["symbol"])
+    ok, msg = place_order("BUY", lot)
     return jsonify({"ok": ok, "msg": msg})
 
 @app.route("/api/action/sell", methods=["POST"])
 def api_sell():
     lot = float((request.get_json(force=True) or {}).get("lot", 0.01))
-    ok, msg = order_send_with_fallback(SETUP["symbol"], "SELL", lot)
-    begin_session_if_needed(SETUP["symbol"])
+    ok, msg = place_order("SELL", lot)
     return jsonify({"ok": ok, "msg": msg})
 
 @app.route("/api/action/add", methods=["POST"])
 def api_add():
     lot = float((request.get_json(force=True) or {}).get("lot", 0.01))
-    side = "BUY" if SETUP["tpsm_auto"] else ("SELL" if SETUP["tpsb_auto"] else "BUY")
-    ok, msg = order_send_with_fallback(SETUP["symbol"], side, lot)
-    begin_session_if_needed(SETUP["symbol"])
+    side = "BUY" if STATE.get("tick_dir",0) >= 0 else "SELL"
+    ok, msg = place_order(side, lot)
+    if ok: STATE["adds_done"] = int(STATE.get("adds_done",0)) + 1
     return jsonify({"ok": ok, "msg": msg})
 
 @app.route("/api/action/close", methods=["POST"])
 def api_close():
-    n = close_all(SETUP["symbol"], reason="manual")
-    end_session()
+    n = close_all_positions(reason="manual")
+    end_session("manual-close")
     return jsonify({"ok": True, "closed": n})
 
 @app.route("/api/action/breakeven", methods=["POST"])
 def api_be():
-    sym = SETUP["symbol"]
     need = float(SETUP["session"]["be_min_profit"])
-    if float_pl(sym) >= need and open_count(sym) >= SETUP["session"]["min_positions_for_be"]:
-        close_all(sym, "breakeven-button"); STATE["session_be_hit"] = True
-        end_session(); set_cooldown(10)
-        return jsonify({"ok": True, "action": "close-all"})
-    return jsonify({"ok": False, "msg": "Belum memenuhi BE"}), 200
+    pl = float_pl_agg()
+    if pl >= need and open_count() >= SETUP["session"]["min_positions_for_be"]:
+        close_all_positions(reason="breakeven-button")
+        STATE["session_be_hit"] = True
+        end_session("BE-button")
+        set_cooldown(10, reason="BE")
+        return jsonify({"ok": True, "action": "close-all", "pl": pl})
+    return jsonify({"ok": False, "msg": f"Belum memenuhi BE (pl={pl:.2f} < {need:.2f} atau posisi kurang)"}), 200
 
-@app.route("/api/diag", methods=["GET"])
-def api_diag():
-    try: ti = mt5.terminal_info()
-    except Exception as e: ti = f"EXC {e}"
-    try: ai = mt5.account_info()
-    except Exception as e: ai = f"EXC {e}"
-    return jsonify({
-        "terminal_info": str(ti),
-        "account_info": str(ai),
-        "last_error": str(mt5.last_error()),
-        "symbol": SETUP.get("symbol"),
-        "env": {
-            "MT5_PATH": CFG("MT5_PATH"),
-            "MT5_LOGIN": CFG("MT5_LOGIN"),
-            "MT5_SERVER": CFG("MT5_SERVER"),
-            "MT5_SYMBOL": CFG("MT5_SYMBOL"),
-        }
-    })
+# ===================== Boot =====================
+stop_flag = Event()
 
-# ====== BOOT ======
 def boot():
-    ok = mt5_init()
-    print("[MT5] initialized =", ok, "| symbol target:", SETUP["symbol"], flush=True)
-    symbol_ensure(SETUP["symbol"])
+    STATE["price"] = 2000.0
     th = Thread(target=engine_loop, daemon=True); th.start()
     return th
 
 if __name__ == "__main__":
     boot()
+    # Bind ke semua interface; sesuaikan port dengan servermu
     app.run(host="0.0.0.0", port=5000, debug=False)
