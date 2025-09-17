@@ -1,12 +1,14 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="id">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
   <title>THB Indodam</title>
   <style>
-    :root{ --bg:#ffffff; --ink:#0a0a0a; --mut:#6b7280; --line:#e5e7eb;
-      --green:#16a34a; --red:#dc2626; --blue:#2563eb; --yellow:#f59e0b; --violet:#7c3aed; }
+    :root{
+      --bg:#ffffff; --ink:#0a0a0a; --mut:#6b7280; --line:#e5e7eb;
+      --green:#16a34a; --red:#dc2626; --blue:#2563eb; --yellow:#f59e0b; --violet:#7c3aed;
+    }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial}
     :where(p,span,small,td,th,button,input,label,div){font-size:12px}
@@ -58,8 +60,6 @@
     canvas{display:block;width:100%;height:180px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .lot-wrap{display:flex;gap:6px;align-items:center}
     .lot{width:56px;padding:6px;border:1px solid var(--line);border-radius:8px}
-    .badge.small{padding:1px 5px;border-radius:7px}
-    html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   </style>
 </head>
 <body>
@@ -75,23 +75,18 @@
     <section id="p-chart" class="panel active">
       <div class="box">
         <div class="row">
-          <div>
-            <span class="mut">Symbol</span> <b id="sym">XAUUSDC</b>
-            <small id="opBadge" class="badge" title="Open Positions">0</small>
-          </div>
+          <div><span class="mut">Symbol</span> <b id="sym">XAUUSDc</b></div>
           <div class="big" id="price">-</div>
         </div>
         <canvas id="chart"></canvas>
         <div class="row" style="margin-top:6px">
           <div>Equity: <b id="equity">-</b></div>
           <div>Daily P/L: <b id="dailyPL">0.00</b></div>
-          <div>Free Margin: <b id="freeMargin">0.00</b></div>
         </div>
         <div class="bar" style="margin-top:4px"><i id="progress" style="width:0%;background:linear-gradient(90deg,#fecaca,#e5e7eb,#bbf7d0)"></i></div>
         <div class="row" style="margin-top:6px">
           <label class="switch"><input id="swTPSM" type="checkbox"><span>Auto TPSM</span></label>
           <label class="switch"><input id="swTPSB" type="checkbox"><span>Auto TPSB</span></label>
-          <label class="switch"><input id="swABE"  type="checkbox"><span>Auto BE</span></label>
         </div>
         <div class="grid2" style="margin-top:6px">
           <button class="btn b-close" id="btnClose">Close All</button>
@@ -110,11 +105,9 @@
         <div class="lot-wrap">
           <span class="mut">Lot</span><input id="lot" class="lot" type="number" step="0.01" min="0.01" value="0.01">
         </div>
-        <div class="row" style="gap:6px;justify-content:flex-end;align-items:center">
+        <div class="row" style="gap:6px;justify-content:flex-end">
           <button class="btn b-buy" id="btnBuy">BUY</button>
-          <span id="cdBuy" class="badge warn small" style="display:none">00:00</span>
           <button class="btn b-sell" id="btnSell">SELL</button>
-          <span id="cdSell" class="badge warn small" style="display:none">00:00</span>
         </div>
       </div>
       <p class="hint" style="margin-top:4px">Eksekusi mengikuti kompas tren & TPS; tombol disable saat offline/locked.</p>
@@ -198,51 +191,76 @@
   async function get(path){ const r=await fetch(path,{cache:"no-cache"}); if(!r.ok) throw new Error(r.status); return r.json(); }
   async function post(path, body){ const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); if(!r.ok) throw new Error(r.status); return r.json(); }
 
-  const cvs = document.getElementById('chart'); const ctx = cvs.getContext('2d'); let lastWidth = 0;
-  function resizeCanvas(){ const rect=cvs.getBoundingClientRect();
-    if (lastWidth !== rect.width){ lastWidth=rect.width; cvs.width=Math.floor(rect.width*2); cvs.height=360; drawChart(); } }
+  const cvs = document.getElementById('chart');
+  const ctx = cvs.getContext('2d');
+  let lastWidth = 0;
+  function resizeCanvas(){
+    const rect = cvs.getBoundingClientRect();
+    if (lastWidth !== rect.width) {
+      lastWidth = rect.width;
+      cvs.width = Math.floor(rect.width*2);
+      cvs.height = 360;
+      drawChart();
+    }
+  }
   window.addEventListener('resize', resizeCanvas);
   let CANDLES = [];
-  function ema(arr,p){ const k=2/(p+1); let out=[], prev=null; for(let i=0;i<arr.length;i++){ const v=arr[i]; prev=(prev===null)?v: v + k*(arr[i]-prev); out.push(prev);} return out;}
-  function sma(arr,p){ const out=[]; let sum=0; for(let i=0;i<arr.length;i++){ sum+=arr[i]; if(i>=p) sum-=arr[i-p]; out.push(i>=p-1? sum/p : arr[i]); } return out; }
-
-  let CURRENT_PRICE=null, LAST_PRICE=null, LAST_BLINK=0;
+  function ema(arr, p){
+    const k = 2/(p+1); let out = [], prev=null;
+    for(let i=0;i<arr.length;i++){ const v=arr[i]; prev = (prev===null)? v : v + k*(arr[i]-prev); out.push(prev); }
+    return out;
+  }
+  function sma(arr, p){
+    const out=[]; let sum=0;
+    for(let i=0;i<arr.length;i++){ sum+=arr[i]; if(i>=p) sum-=arr[i-p]; out.push(i>=p-1? sum/p : arr[i]); }
+    return out;
+  }
   function drawChart(){
     if(!ctx || CANDLES.length<5){ ctx.clearRect(0,0,cvs.width,cvs.height); return; }
     const padL=38, padR=8, padT=8, padB=16;
-    const w=cvs.width, h=cvs.height; ctx.clearRect(0,0,w,h);
-    const lows=CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
-    const min=Math.min(...lows), max=Math.max(...highs);
-    const x0=padL, x1=w-padR, y0=padT, y1=h-padB; const n=CANDLES.length; const cw=(x1-x0)/n;
-    const yv=v=> y1 - (v-min)/(max-min+1e-9)*(y1-y0);
+    const w = cvs.width, h = cvs.height;
+    ctx.clearRect(0,0,w,h);
+    const lows = CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
+    const min = Math.min(...lows), max=Math.max(...highs);
+    const x0 = padL, x1 = w-padR, y0=padT, y1=h-padB;
+    const n = CANDLES.length;
+    const cw = (x1-x0)/n;
 
     ctx.strokeStyle="#eee"; ctx.lineWidth=1;
-    for(let i=0;i<4;i++){ const y=y0+(y1-y0)*i/3; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
+    for(let i=0;i<4;i++){ const y=y0 + (y1-y0)*i/3; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
 
     const closes=CANDLES.map(d=>d.close);
-    const ema9=ema(closes,9), ma20=sma(closes,20), ema50=ema(closes,50);
+    const ema9 = ema(closes,9), ma20=sma(closes,20), ema50=ema(closes,50);
+    function yv(v){ return y1 - (v-min)/(max-min+1e-9)*(y1-y0) }
 
     for(let i=0;i<n;i++){
-      const d=CANDLES[i], x=x0+i*cw+cw*0.5;
-      ctx.strokeStyle="#999"; ctx.beginPath(); ctx.moveTo(x,yv(d.high)); ctx.lineTo(x,yv(d.low)); ctx.stroke();
-      const up=d.close>=d.open; ctx.fillStyle= up? "#16a34a":"#dc2626";
-      const yOpen=yv(d.open), yClose=yv(d.close); const bh=Math.max(1, Math.abs(yClose-yOpen));
+      const d=CANDLES[i], x = x0 + i*cw + cw*0.5;
+      ctx.strokeStyle="#999"; ctx.beginPath(); ctx.moveTo(x, yv(d.high)); ctx.lineTo(x, yv(d.low)); ctx.stroke();
+      const up = d.close>=d.open;
+      ctx.fillStyle = up? "#16a34a":"#dc2626";
+      const yOpen=yv(d.open), yClose=yv(d.close);
+      const bh = Math.max(1, Math.abs(yClose - yOpen));
       ctx.fillRect(x-cw*0.28, Math.min(yOpen,yClose), cw*0.56, bh);
     }
 
-    const win=CANDLES.slice(-15); const s=Math.min(...win.map(d=>d.low)); const r=Math.max(...win.map(d=>d.high));
+    const win = CANDLES.slice(-15);
+    const s = Math.min(...win.map(d=>d.low));
+    const r = Math.max(...win.map(d=>d.high));
     ctx.strokeStyle="#10b981"; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(x0,yv(s)); ctx.lineTo(x1,yv(s)); ctx.stroke();
-    ctx.strokeStyle="#ef4444"; ctx.beginPath(); ctx.moveTo(x0,yv(r)); ctx.lineTo(x1,yv(r)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle="#ef4444"; ctx.beginPath(); ctx.moveTo(x0,yv(r)); ctx.lineTo(x1,yv(r)); ctx.stroke();
+    ctx.setLineDash([]);
 
-    function line(arr,color){ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
-      for(let i=0;i<n;i++){ const x=x0+i*cw+cw*0.5, y=yv(arr[i]); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
-    line(ema9,"#16a34a"); line(ma20,"#2563eb"); line(ema50,"#7c3aed");
-
-    if (CURRENT_PRICE!=null){
-      const yLen=yv(CURRENT_PRICE); const now=Date.now(); const blink=(now - LAST_BLINK) < 200;
-      ctx.save(); ctx.strokeStyle= blink? "#f59e0b":"rgba(245,158,11,0.9)"; ctx.lineWidth= blink?4:3; ctx.setLineDash([6,4]);
-      ctx.beginPath(); ctx.moveTo(x0,yLen); ctx.lineTo(x1,yLen); ctx.stroke(); ctx.restore();
+    function line(arr, color){
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+      for(let i=0;i<n;i++){
+        const x = x0 + i*cw + cw*0.5, y=yv(arr[i]);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
     }
+    line(ema9,"#16a34a"); // EMA9 hijau
+    line(ma20,"#2563eb"); // MA20 biru
+    line(ema50,"#7c3aed"); // EMA50 ungu
   }
 
   function renderStatus(s){
@@ -250,7 +268,7 @@
     setBadge($('#badgeMode'), s.auto_mode? 'AUTO':'MANUAL', s.auto_mode?'warn':'');
     setBadge($('#badgeTrend'), s.mode||'SIDE','');
 
-    $('#sym').textContent = s.symbol || 'XAUUSDC';
+    $('#sym').textContent = s.symbol || 'XAUUSDc';
     $('#price').textContent = fmt(s.price||0);
     colorize($('#price'), (s.tick_dir||0));
     $('#equity').textContent = fmt(s.equity||0);
@@ -262,7 +280,6 @@
 
     $('#swTPSM').checked = !!s.tpsm_auto;
     $('#swTPSB').checked = !!s.tpsb_auto;
-    if (document.getElementById('swABE')) $('#swABE').checked = !!s.abe_auto;
 
     $('#vsl').textContent = fmt(s.vsl||0);
     $('#peak').textContent= fmt(s.best_pl||0);
@@ -271,25 +288,14 @@
 
     $('#totalLot').textContent = fmt(s.total_lot||0);
     $('#openCount').textContent = s.open_count||0;
-    if (document.getElementById('opBadge')) document.getElementById('opBadge').textContent = (s.open_count||0);
     $('#floatPL').textContent = fmt(s.float_pl||0);
     colorize($('#floatPL'), s.float_pl||0);
     $('#cool').textContent = s.cooldown? ('Cooling '+(s.cooldown_remain||'')):'Ready';
 
-    $('#freeMargin').textContent = fmt(s.free_margin || s.freeMargin || 0);
-
-    const onCd = !!s.cooldown; const remain = (s.cooldown_remain || s.timer || "00:00");
-    const cdBuy  = document.getElementById('cdBuy'); const cdSell = document.getElementById('cdSell');
-    if (cdBuy && cdSell){ cdBuy.style.display= onCd?'inline-block':'none'; cdSell.style.display= onCd?'inline-block':'none'; cdBuy.textContent=remain; cdSell.textContent=remain; }
-
-    if (typeof s.price === 'number') {
-      CURRENT_PRICE = s.price;
-      if (LAST_PRICE == null || Math.abs(CURRENT_PRICE - LAST_PRICE) > 1e-9) { LAST_PRICE = CURRENT_PRICE; LAST_BLINK=Date.now(); }
-    }
-
     const tbOpen = tb('tblOpen'); tbOpen.innerHTML='';
     (s.open_positions||[]).forEach((p,i)=>{
-      const tr = document.createElement('tr'); const pl = Number(p.pl||0);
+      const tr = document.createElement('tr');
+      const pl = Number(p.pl||0);
       tr.innerHTML = `<td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
         <td>${fmt(p.entry||0)}</td><td>${fmt(s.price||0)}</td>
         <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td>`;
@@ -323,17 +329,22 @@
       const s = await get('/api/status');
       window.__STATUS__ = s;
       renderStatus(s);
-      if(s.online){ pullCandles(); } else { CANDLES=[]; drawChart(); }
-    }catch(e){ setBadge($('#badgeConn'),'OFFLINE','off'); disControls(true); }
+      if(s.online){ pullCandles(); } else { CANDLES = []; drawChart(); }
+    }catch(e){
+      setBadge($('#badgeConn'),'OFFLINE','off');
+      disControls(true);
+    }
   }
 
   async function pullCandles(tf='M1', count=120){
     try{
-      const sym = (window.__STATUS__ && window.__STATUS__.symbol) || 'XAUUSDC';
+      const sym = (window.__STATUS__ && window.__STATUS__.symbol) || 'XAUUSDc';
       const data = await get(`/api/candles?symbol=${encodeURIComponent(sym)}&tf=${tf}&count=${count}`);
-      CANDLES = data.map(d=>({ time: typeof d.time==='number'? d.time*1000 : Date.parse(d.time),
-        open:+d.open, high:+d.high, low:+d.low, close:+d.close }));
-      resizeCanvas(); drawChart();
+      CANDLES = data.map(d=>({
+        time: typeof d.time==='number'? d.time*1000 : Date.parse(d.time),
+        open: +d.open, high:+d.high, low:+d.low, close:+d.close
+      }));
+      resizeCanvas();
     }catch(e){}
   }
 
@@ -343,12 +354,13 @@
   $('#btnAuto').onclick  = ()=>post('/api/strategy/toggle',{}).then(pull);
   $('#btnBuy').onclick   = ()=>post('/api/action/buy',{lot:+$('#lot').value||0.01}).then(pull);
   $('#btnSell').onclick  = ()=>post('/api/action/sell',{lot:+$('#lot').value||0.01}).then(pull);
+
   $('#swTPSM').onchange = (e)=>post('/api/strategy/tpsm',{on:e.target.checked}).then(pull);
   $('#swTPSB').onchange = (e)=>post('/api/strategy/tpsb',{on:e.target.checked}).then(pull);
-  const elABE = document.getElementById('swABE'); if (elABE) elABE.onchange = (e)=>post('/api/strategy/abe',{on:e.target.checked}).then(pull);
 
-  pull(); setInterval(pull, 1000); resizeCanvas();
-  setInterval(()=>{ if (window.__STATUS__ && window.__STATUS__.online){ drawChart(); } }, 500);
+  pull();
+  setInterval(pull, 1000);
+  resizeCanvas();
 </script>
 </body>
 </html>
