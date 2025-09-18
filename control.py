@@ -1,4 +1,4 @@
-# control.py — THB Indodam (REAL MT5 + Persist JSON + Thread-Safe)
+# control.py â€” THB Indodam (REAL MT5 + Persist JSON + Thread-Safe)
 # Port 5000, UI: index.html di folder yang sama
 # Fitur: TPSM/TPSB/ABE, Auto M1 (SR-Gate 10%), Session target/timeout, Cooldown
 # Endpoints: /, /api/status, /api/candles, /api/diag, /api/symbol/select,
@@ -15,8 +15,8 @@ PERSIST_FILE= os.path.join(BASE_DIR, "setup.json")
 
 app = Flask(__name__)
 stop_flag = Event()
-MTX = RLock()                 # <— Kunci semua akses MT5
-STATUS_FAILS = {"count": 0}   # <— Menahan OFFLINE jika 1x error sejenak
+MTX = RLock()                 # <â€” Kunci semua akses MT5
+STATUS_FAILS = {"count": 0}   # <â€” Menahan OFFLINE jika 1x error sejenak
 
 # ========== DEFAULT ENV ==========
 DEFAULTS = {
@@ -81,6 +81,17 @@ STATE = {
     "session_active": False, "session_start_ts": 0.0,
     "session_be_hit": False, "session_peak_pl": 0.0,
 }
+
+SR_TRIGGER = {
+    "buy": {"armed": True, "last_ts": 0.0, "pending": False},
+    "sell": {"armed": True, "last_ts": 0.0, "pending": False}
+}
+SR_STATE = {
+    "support": 0.0, "resistance": 0.0, "mid": 0.0,
+    "top": 0.0, "bottom": 0.0
+}
+SR_MIN_GAP = 5.0
+SR_PRICE_BUFFER_PCT = 0.0015
 
 CLOSE_REASON = {}
 
@@ -201,53 +212,565 @@ def total_lot(sym):  return sum(p.volume for p in positions(sym))
 
 # ========== History helper ==========
 
-def today_range():
-    now = datetime.now()
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    return int(start.timestamp()), int(now.timestamp())
-
 def get_history_today():
-    start_ts, end_ts = today_range()
+    now = datetime.now()
+    start_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     with MTX:
         try:
-            mt5.history_select(start_ts, end_ts)
-            deals = mt5.history_deals_get()
+            deals = mt5.history_deals_get(start_day, now) or []
         except Exception:
-            deals = None
-    records = []
+            deals = []
+    trades = {}
     total_pl = 0.0
-    if deals:
-        grouped = {}
-        for d in deals:
-            ticket = getattr(d, 'position_id', getattr(d, 'ticket', None))
-            if ticket is None:
-                continue
-            grouped.setdefault(ticket, []).append(d)
-        for ticket, rows in grouped.items():
-            closes = [r for r in rows if getattr(r, 'entry', None) == mt5.TRADE_DEAL_ENTRY_OUT]
-            if not closes:
-                continue
-            lot = sum(float(getattr(r, 'volume', 0.0) or 0.0) for r in closes)
-            profit = sum(float(getattr(r, 'profit', 0.0) or 0.0) for r in closes)
+    for d in deals:
+        ticket = int(getattr(d, 'position_id', getattr(d, 'ticket', 0)) or 0)
+        if ticket == 0:
+            continue
+        deal_time = datetime.fromtimestamp(getattr(d, 'time', 0), tz=timezone.utc)
+        if deal_time.date() != datetime.utcnow().date():
+            continue
+        rec = trades.setdefault(ticket, {
+            'symbol': getattr(d, 'symbol', ''),
+            'side': 'UNKNOWN',
+            'lot': 0.0,
+            'start': 0.0,
+            'close': 0.0,
+            'profit': 0.0,
+            'time_utc': deal_time.strftime('%H:%M:%S'),
+            'exec': 'UNKNOWN',
+        })
+        entry = getattr(d, 'entry', None)
+        volume = float(getattr(d, 'volume', 0.0) or 0.0)
+        if entry == 0:
+            rec['side'] = 'BUY' if getattr(d, 'type', 0) == 0 else 'SELL'
+            rec['start'] = getattr(d, 'price', 0.0)
+            rec['lot'] = max(rec['lot'], volume)
+        elif entry == 1:
+            trade_side = 'BUY' if getattr(d, 'type', 0) == 1 else 'SELL'
+            if rec['side'] == 'UNKNOWN':
+                rec['side'] = trade_side
+            rec['close'] = getattr(d, 'price', 0.0)
+            rec['lot'] = max(rec['lot'], volume)
+            profit = float(getattr(d, 'profit', 0.0) or 0.0)
+            rec['profit'] += profit
+            rec['time_utc'] = deal_time.strftime('%H:%M:%S')
+            comment = (getattr(d, 'comment', '') or '').upper()
+            label = comment.split('CLOSE-ALL:')[-1] if 'CLOSE-ALL:' in comment else comment
+            label = (label or '').strip().upper()
+            if label.startswith('SESSION-P'):
+                rec['exec'] = 'SESSION-PROFIT'
+            elif label.startswith('SESSION-L'):
+                rec['exec'] = 'SESSION-LOSS'
+            elif label.startswith('SESSION-T'):
+                rec['exec'] = 'SESSION-TIMEOUT'
+            elif label.startswith('SESS'):
+                rec['exec'] = 'SESSION'
+            elif label.startswith('BREAKEV'):
+                rec['exec'] = 'BREAKEVEN'
+            elif label.startswith('TPSM'):
+                rec['exec'] = 'TPSM'
+            elif label.startswith('TPSB'):
+                rec['exec'] = 'TPSB'
+            elif label.startswith('CROSSR'):
+                rec['exec'] = 'CROSSR'
+            elif label and rec['exec'] == 'UNKNOWN':
+                rec['exec'] = label
+            elif not label and rec['exec'] == 'UNKNOWN':
+                rec['exec'] = 'MANUAL'
             total_pl += profit
-            side = 'BUY' if profit >= 0 else 'SELL'
-            first = min(rows, key=lambda r: getattr(r, 'time', 0))
-            last = max(rows, key=lambda r: getattr(r, 'time', 0))
-            symbol = getattr(last, 'symbol', getattr(first, 'symbol', ''))
-            ticket_id = int(getattr(last, 'position_id', getattr(last, 'ticket', 0)) or 0)
-            exec_reason = CLOSE_REASON.get(ticket_id) or 'UNKNOWN'
-            records.append({
-                'symbol': symbol,
-                'side': side,
-                'lot': round(lot, 2),
-                'start': getattr(first, 'price', 0.0),
-                'close': getattr(last, 'price', 0.0),
-                'profit': profit,
-                'time_utc': datetime.utcfromtimestamp(getattr(last, 'time', 0)).strftime('%H:%M:%S'),
-                'exec': exec_reason,
-            })
-    records.sort(key=lambda r: r['time_utc'], reverse=True)
-    return records[:10], total_pl
+            if rec['start'] == 0.0:
+                rec['start'] = rec['close']
+    history = []
+    for rec in trades.values():
+        if rec['profit'] == 0.0 and rec['close'] == 0.0:
+            continue
+        history.append({
+            'symbol': rec['symbol'],
+            'side': rec['side'],
+            'lot': round(rec['lot'], 2),
+            'start': rec['start'],
+            'close': rec['close'],
+            'profit': rec['profit'],
+            'time_utc': rec['time_utc'],
+            'exec': rec['exec'] or 'UNKNOWN',
+        })
+    history.sort(key=lambda r: r['time_utc'], reverse=True)
+    return history[:10], total_pl
+
+# ========== SR auto-trade ==========
+
+def compute_sr_thresholds(sym):
+    data = candles(sym, "M1", 30)
+    if len(data) < 5:
+        return None
+    window = data[-15:]
+    support = min(d['low'] for d in window)
+    resistance = max(d['high'] for d in window)
+    rng = max(1e-6, resistance - support)
+    mid = support + rng * 0.5
+    top = resistance - rng * 0.10
+    bottom = support + rng * 0.10
+    buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
+    buffer_sell = max(1e-6, resistance * SR_PRICE_BUFFER_PCT)
+    return {
+        'support': support,
+        'resistance': resistance,
+        'mid': mid,
+        'top': top,
+        'bottom': bottom,
+        'buffer_buy': buffer_buy,
+        'buffer_sell': buffer_sell,
+    }
+
+def sr_auto_trade(sym):
+    global SR_STATE
+    thresholds = compute_sr_thresholds(sym)
+    if thresholds is None:
+        SR_STATE = {'support': 0.0, 'resistance': 0.0, 'mid': 0.0, 'top': 0.0, 'bottom': 0.0}
+        for trig in SR_TRIGGER.values():
+            trig['armed'] = True
+            trig['pending'] = False
+        return
+    SR_STATE = {
+        'support': thresholds['support'],
+        'resistance': thresholds['resistance'],
+        'mid': thresholds['mid'],
+        'top': thresholds['top'],
+        'bottom': thresholds['bottom'],
+    }
+    t = tick(sym)
+    price = None
+    if t:
+        price = t.last if t.last > 0 else (t.bid or t.ask or None)
+    now = time.time()
+    open_cnt = open_count(sym)
+    cooldown = STATE['cooldown']
+
+    if open_cnt > 0:
+        for trig in SR_TRIGGER.values():
+            if trig['pending']:
+                trig['pending'] = False
+
+    def rearm(side):
+        trig = SR_TRIGGER[side]
+        if trig['armed'] or trig['pending']:
+            return
+        if now - trig['last_ts'] < SR_MIN_GAP:
+            return
+        if cooldown or open_cnt != 0:
+            return
+        if price is None:
+            trig['armed'] = True
+            return
+        if side == 'buy':
+            if price >= thresholds['bottom'] + thresholds['buffer_buy']:
+                trig['armed'] = True
+        else:
+            if price <= thresholds['top'] - thresholds['buffer_sell']:
+                trig['armed'] = True
+
+    rearm('buy')
+    rearm('sell')
+
+    if price is None or open_cnt != 0 or cooldown:
+        return
+
+    lot_default = float(SETUP.get('sr_default_lot', 0.01) or 0.01)
+
+    buy_trig = SR_TRIGGER['buy']
+    if buy_trig['armed'] and not buy_trig['pending'] and price <= thresholds['bottom'] and now - buy_trig['last_ts'] >= SR_MIN_GAP:
+        STATE['locked'] = True
+        ok, _ = order_send_with_fallback(sym, 'BUY', lot_default)
+        STATE['locked'] = False
+        if ok:
+            buy_trig['armed'] = False
+            buy_trig['pending'] = True
+            buy_trig['last_ts'] = now
+            begin_session_if_needed(sym)
+        else:
+            buy_trig['last_ts'] = now
+
+    sell_trig = SR_TRIGGER['sell']
+    if sell_trig['armed'] and not sell_trig['pending'] and price >= thresholds['top'] and now - sell_trig['last_ts'] >= SR_MIN_GAP:
+        STATE['locked'] = True
+        ok, _ = order_send_with_fallback(sym, 'SELL', lot_default)
+        STATE['locked'] = False
+        if ok:
+            sell_trig['armed'] = False
+            sell_trig['pending'] = True
+            sell_trig['last_ts'] = now
+            begin_session_if_needed(sym)
+        else:
+            sell_trig['last_ts'] = now
+
+# ========== SR-gate / Auto-entry ==========# ========== SR auto-trade ==========
+
+def compute_sr_thresholds(sym):
+    data = candles(sym, "M1", 30)
+    if len(data) < 5:
+        return None
+    window = data[-15:]
+    support = min(d["low"] for d in window)
+    resistance = max(d["high"] for d in window)
+    rng = max(1e-6, resistance - support)
+    mid = support + rng * 0.5
+    top = resistance - rng * 0.10
+    bottom = support + rng * 0.10
+    buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
+    buffer_sell = max(1e-6, resistance * SR_PRICE_BUFFER_PCT)
+    return {
+        "support": support,
+        "resistance": resistance,
+        "mid": mid,
+        "top": top,
+        "bottom": bottom,
+        "buffer_buy": buffer_buy,
+        "buffer_sell": buffer_sell,
+    }
+
+def sr_auto_trade(sym):
+    global SR_STATE
+    thresholds = compute_sr_thresholds(sym)
+    if thresholds is None:
+        SR_STATE = {"support": 0.0, "resistance": 0.0, "mid": 0.0, "top": 0.0, "bottom": 0.0}
+        return
+    SR_STATE = {
+        "support": thresholds["support"],
+        "resistance": thresholds["resistance"],
+        "mid": thresholds["mid"],
+        "top": thresholds["top"],
+        "bottom": thresholds["bottom"],
+    }
+    t = tick(sym)
+    price = None
+    if t:
+        price = t.last if t.last > 0 else (t.bid or t.ask or None)
+    now = time.time()
+    open_cnt = open_count(sym)
+    cooldown = STATE["cooldown"]
+
+    def rearm(side):
+        trig = SR_TRIGGER[side]
+        if trig["armed"]:
+            return
+        if now - trig["last_ts"] < SR_MIN_GAP:
+            return
+        if cooldown or open_cnt != 0:
+            return
+        if price is None:
+            trig["armed"] = True
+            return
+        if side == "buy":
+            if price >= thresholds["bottom"] + thresholds["buffer_buy"]:
+                trig["armed"] = True
+        else:
+            if price <= thresholds["top"] - thresholds["buffer_sell"]:
+                trig["armed"] = True
+
+    rearm("buy")
+    rearm("sell")
+
+    if price is None or open_cnt != 0 or cooldown:
+        return
+
+    lot_default = float(SETUP.get("sr_default_lot", 0.01) or 0.01)
+
+    if SR_TRIGGER["buy"]["armed"] and price <= thresholds["bottom"] and now - SR_TRIGGER["buy"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "BUY", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["buy"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["buy"]["last_ts"] = now
+
+    if SR_TRIGGER["sell"]["armed"] and price >= thresholds["top"] and now - SR_TRIGGER["sell"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "SELL", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["sell"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["sell"]["last_ts"] = now
+
+# ========== SR-gate / Auto-entry ==========# ========== SR auto-trade ==========
+
+def compute_sr_thresholds(sym):
+    data = candles(sym, "M1", 30)
+    if len(data) < 5:
+        return None
+    window = data[-15:]
+    support = min(d["low"] for d in window)
+    resistance = max(d["high"] for d in window)
+    rng = max(1e-6, resistance - support)
+    mid = support + rng * 0.5
+    top = resistance - rng * 0.10
+    bottom = support + rng * 0.10
+    buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
+    buffer_sell = max(1e-6, resistance * SR_PRICE_BUFFER_PCT)
+    return {
+        "support": support,
+        "resistance": resistance,
+        "mid": mid,
+        "top": top,
+        "bottom": bottom,
+        "buffer_buy": buffer_buy,
+        "buffer_sell": buffer_sell,
+    }
+
+def sr_auto_trade(sym):
+    global SR_STATE
+    thresholds = compute_sr_thresholds(sym)
+    if thresholds is None:
+        SR_STATE = {"support": 0.0, "resistance": 0.0, "mid": 0.0, "top": 0.0, "bottom": 0.0}
+        return
+    SR_STATE = {
+        "support": thresholds["support"],
+        "resistance": thresholds["resistance"],
+        "mid": thresholds["mid"],
+        "top": thresholds["top"],
+        "bottom": thresholds["bottom"],
+    }
+    t = tick(sym)
+    price = None
+    if t:
+        price = t.last if t.last > 0 else (t.bid or t.ask or None)
+    now = time.time()
+    open_cnt = open_count(sym)
+    cooldown = STATE["cooldown"]
+
+    def rearm(side):
+        trig = SR_TRIGGER[side]
+        if trig["armed"]:
+            return
+        if now - trig["last_ts"] < SR_MIN_GAP:
+            return
+        if cooldown or open_cnt != 0:
+            return
+        if price is None:
+            trig["armed"] = True
+            return
+        if side == "buy":
+            if price >= thresholds["bottom"] + thresholds["buffer_buy"]:
+                trig["armed"] = True
+        else:
+            if price <= thresholds["top"] - thresholds["buffer_sell"]:
+                trig["armed"] = True
+
+    rearm("buy")
+    rearm("sell")
+
+    if price is None or open_cnt != 0 or cooldown:
+        return
+
+    lot_default = float(SETUP.get("sr_default_lot", 0.01) or 0.01)
+
+    if SR_TRIGGER["buy"]["armed"] and price <= thresholds["bottom"] and now - SR_TRIGGER["buy"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "BUY", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["buy"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["buy"]["last_ts"] = now
+
+    if SR_TRIGGER["sell"]["armed"] and price >= thresholds["top"] and now - SR_TRIGGER["sell"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "SELL", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["sell"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["sell"]["last_ts"] = now
+
+# ========== SR-gate / Auto-entry ==========# ========== SR auto-trade ==========
+
+def compute_sr_thresholds(sym):
+    data = candles(sym, "M1", 30)
+    if len(data) < 5:
+        return None
+    window = data[-15:]
+    support = min(d["low"] for d in window)
+    resistance = max(d["high"] for d in window)
+    rng = max(1e-6, resistance - support)
+    mid = support + rng * 0.5
+    top = resistance - rng * 0.10
+    bottom = support + rng * 0.10
+    buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
+    buffer_sell = max(1e-6, resistance * SR_PRICE_BUFFER_PCT)
+    return {
+        "support": support,
+        "resistance": resistance,
+        "mid": mid,
+        "top": top,
+        "bottom": bottom,
+        "buffer_buy": buffer_buy,
+        "buffer_sell": buffer_sell,
+    }
+
+def sr_auto_trade(sym):
+    global SR_STATE
+    thresholds = compute_sr_thresholds(sym)
+    if thresholds is None:
+        SR_STATE = {"support": 0.0, "resistance": 0.0, "mid": 0.0, "top": 0.0, "bottom": 0.0}
+        return
+    SR_STATE = {
+        "support": thresholds["support"],
+        "resistance": thresholds["resistance"],
+        "mid": thresholds["mid"],
+        "top": thresholds["top"],
+        "bottom": thresholds["bottom"],
+    }
+    t = tick(sym)
+    price = None
+    if t:
+        price = t.last if t.last > 0 else (t.bid or t.ask or None)
+    now = time.time()
+    open_cnt = open_count(sym)
+    cooldown = STATE["cooldown"]
+
+    def rearm(side):
+        trig = SR_TRIGGER[side]
+        if trig["armed"]:
+            return
+        if now - trig["last_ts"] < SR_MIN_GAP:
+            return
+        if cooldown or open_cnt != 0:
+            return
+        if price is None:
+            trig["armed"] = True
+            return
+        if side == "buy":
+            if price >= thresholds["bottom"] + thresholds["buffer_buy"]:
+                trig["armed"] = True
+        else:
+            if price <= thresholds["top"] - thresholds["buffer_sell"]:
+                trig["armed"] = True
+
+    rearm("buy")
+    rearm("sell")
+
+    if price is None or open_cnt != 0 or cooldown:
+        return
+
+    lot_default = float(SETUP.get("sr_default_lot", 0.01) or 0.01)
+
+    if SR_TRIGGER["buy"]["armed"] and price <= thresholds["bottom"] and now - SR_TRIGGER["buy"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "BUY", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["buy"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["buy"]["last_ts"] = now
+
+    if SR_TRIGGER["sell"]["armed"] and price >= thresholds["top"] and now - SR_TRIGGER["sell"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "SELL", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["sell"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["sell"]["last_ts"] = now
+
+# ========== SR-gate / Auto-entry ==========
+# ========== SR auto-trade ==========
+
+def compute_sr_thresholds(sym):
+    data = candles(sym, "M1", 30)
+    if len(data) < 5:
+        return None
+    window = data[-15:]
+    support = min(d["low"] for d in window)
+    resistance = max(d["high"] for d in window)
+    rng = max(1e-6, resistance - support)
+    mid = support + rng * 0.5
+    top = resistance - rng * 0.10
+    bottom = support + rng * 0.10
+    buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
+    buffer_sell = max(1e-6, resistance * SR_PRICE_BUFFER_PCT)
+    return {
+        "support": support,
+        "resistance": resistance,
+        "mid": mid,
+        "top": top,
+        "bottom": bottom,
+        "buffer_buy": buffer_buy,
+        "buffer_sell": buffer_sell,
+    }
+
+def sr_auto_trade(sym):
+    global SR_STATE
+    thresholds = compute_sr_thresholds(sym)
+    if thresholds is None:
+        SR_STATE = {"support": 0.0, "resistance": 0.0, "mid": 0.0, "top": 0.0, "bottom": 0.0}
+        return
+    SR_STATE = {
+        "support": thresholds["support"],
+        "resistance": thresholds["resistance"],
+        "mid": thresholds["mid"],
+        "top": thresholds["top"],
+        "bottom": thresholds["bottom"],
+    }
+    t = tick(sym)
+    price = None
+    if t:
+        price = t.last if t.last > 0 else (t.bid or t.ask or None)
+    now = time.time()
+    open_cnt = open_count(sym)
+    cooldown = STATE["cooldown"]
+
+    def rearm(side):
+        trig = SR_TRIGGER[side]
+        if trig["armed"]:
+            return
+        if now - trig["last_ts"] < SR_MIN_GAP:
+            return
+        if cooldown or open_cnt != 0:
+            return
+        if price is None:
+            trig["armed"] = True
+            return
+        if side == "buy":
+            if price >= thresholds["bottom"] + thresholds["buffer_buy"]:
+                trig["armed"] = True
+        else:
+            if price <= thresholds["top"] - thresholds["buffer_sell"]:
+                trig["armed"] = True
+
+    rearm("buy")
+    rearm("sell")
+
+    if price is None or open_cnt != 0 or cooldown:
+        return
+
+    lot_default = float(SETUP.get("sr_default_lot", 0.01) or 0.01)
+
+    if SR_TRIGGER["buy"]["armed"] and price <= thresholds["bottom"] and now - SR_TRIGGER["buy"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "BUY", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["buy"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["buy"]["last_ts"] = now
+
+    if SR_TRIGGER["sell"]["armed"] and price >= thresholds["top"] and now - SR_TRIGGER["sell"]["last_ts"] >= SR_MIN_GAP:
+        STATE["locked"] = True
+        ok, _ = order_send_with_fallback(sym, "SELL", lot_default)
+        STATE["locked"] = False
+        if ok:
+            SR_TRIGGER["sell"] = {"armed": False, "last_ts": now}
+            begin_session_if_needed(sym)
+        else:
+            SR_TRIGGER["sell"]["last_ts"] = now
 
 # ========== SR-gate / Auto-entry ==========
 def nearest_sr_pct(sym):
@@ -388,6 +911,7 @@ def engine_loop():
                 auto_m1_tick(sym)
                 try_break_event(sym)
                 session_tick(sym)
+                sr_auto_trade(sym)
                 nxt = time.time() + 1.0
         except Exception as e:
             print("[ENGINE]", e, flush=True)
@@ -414,7 +938,11 @@ def _status_payload_offline():
         "vSL": 0.0, "best_pl": 0.0, "adds_done": 0, "timer": STATE["timer"],
         "total_lot": 0.0, "open_count": 0, "float_pl": 0.0,
         "cooldown": STATE["cooldown"], "cooldown_remain": STATE["timer"],
-        "open_positions": [], "history_today": [], "quotes": []
+        "open_positions": [], "history_today": [], "quotes": [],
+        "sr_buy_armed": SR_TRIGGER["buy"]["armed"], "sr_sell_armed": SR_TRIGGER["sell"]["armed"],
+        "sr_buy_last_ts": SR_TRIGGER["buy"]["last_ts"], "sr_sell_last_ts": SR_TRIGGER["sell"]["last_ts"],
+        "sr_support": SR_STATE["support"], "sr_resistance": SR_STATE["resistance"],
+        "sr_top": SR_STATE["top"], "sr_bottom": SR_STATE["bottom"], "sr_mid": SR_STATE["mid"]
     }
 
 @app.route("/api/status", methods=["GET"])
@@ -480,10 +1008,14 @@ def api_status():
                 } for p in positions(sym)
             ],
             "history_today": history,
-            "quotes": quotes
+            "quotes": quotes,
+            "sr_buy_armed": SR_TRIGGER["buy"]["armed"], "sr_sell_armed": SR_TRIGGER["sell"]["armed"],
+            "sr_buy_last_ts": SR_TRIGGER["buy"]["last_ts"], "sr_sell_last_ts": SR_TRIGGER["sell"]["last_ts"],
+            "sr_support": SR_STATE["support"], "sr_resistance": SR_STATE["resistance"],
+            "sr_top": SR_STATE["top"], "sr_bottom": SR_STATE["bottom"], "sr_mid": SR_STATE["mid"]
         })
     except Exception as e:
-        # jangan 500 — selalu balas JSON aman
+        # jangan 500 â€” selalu balas JSON aman
         print("[/api/status] EXC:", e, flush=True)
         STATUS_FAILS["count"] += 1
         return jsonify(_status_payload_offline())
@@ -537,6 +1069,9 @@ def api_abe():
 @app.route("/api/action/buy", methods=["POST"])
 def api_buy():
     lot = float((request.get_json(force=True) or {}).get("lot", 0.01))
+    trig = SR_TRIGGER["buy"]
+    if (not trig["armed"] or trig.get("pending")) and (time.time() - trig["last_ts"] < SR_MIN_GAP or trig.get("pending")) and open_count(SETUP["symbol"]) == 0:
+        return jsonify({"ok": False, "msg": "sr-buy-guard"})
     STATE["locked"] = True
     ok, msg = order_send_with_fallback(SETUP["symbol"], "BUY", lot)
     STATE["locked"] = False
@@ -546,6 +1081,9 @@ def api_buy():
 @app.route("/api/action/sell", methods=["POST"])
 def api_sell():
     lot = float((request.get_json(force=True) or {}).get("lot", 0.01))
+    trig = SR_TRIGGER["sell"]
+    if (not trig["armed"] or trig.get("pending")) and (time.time() - trig["last_ts"] < SR_MIN_GAP or trig.get("pending")) and open_count(SETUP["symbol"]) == 0:
+        return jsonify({"ok": False, "msg": "sr-sell-guard"})
     STATE["locked"] = True
     ok, msg = order_send_with_fallback(SETUP["symbol"], "SELL", lot)
     STATE["locked"] = False
