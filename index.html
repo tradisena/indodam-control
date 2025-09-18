@@ -62,7 +62,7 @@
     .hint{font-size:10px;color:var(--mut)}
     .bar{height:6px;background:#f3f4f6;border-radius:6px;overflow:hidden}
     .bar>i{display:block;height:100%}
-    canvas{display:block;width:100%;height:180px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    canvas{display:block;width:100%;height:220px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .lot-wrap{display:flex;gap:6px;align-items:center}
     .lot{width:56px;padding:6px;border:1px solid var(--line);border-radius:8px}
   </style>
@@ -162,7 +162,7 @@
         <div style="max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:8px">
           <table id="tblHist">
             <thead><tr>
-              <th>#</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Start</th><th>Close</th><th>Profit</th><th>UTC</th>
+              <th>#</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Start</th><th>Close</th><th>Profit</th><th>UTC</th><th>Exec</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -192,7 +192,6 @@
       const b = document.getElementById(id); if(!b) return; b.classList.toggle('dis', !!dis);
     });
   }
-
   // ---------- Tabs ----------
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick=()=>{
@@ -210,18 +209,21 @@
   // ---------- Chart (canvas lightweight) ----------
   const cvs = document.getElementById('chart');
   const ctx = cvs.getContext('2d');
+  const CHART_HEIGHT = 220;
   let lastWidth = 0;
   function resizeCanvas(){
     const rect = cvs.getBoundingClientRect();
-    if (lastWidth !== rect.width) {
+    const targetHeight = CHART_HEIGHT;
+    if (lastWidth !== rect.width || cvs.height !== targetHeight*2){
       lastWidth = rect.width;
       cvs.width = Math.floor(rect.width*2);
-      cvs.height = 360;
+      cvs.height = targetHeight*2;
       drawChart();
     }
   }
   window.addEventListener('resize', resizeCanvas);
   let CANDLES = []; // {time, open, high, low, close}
+  let LIVE_PRICE = null;
   function ema(arr, p){
     const k = 2/(p+1); let out = [], prev=null;
     for(let i=0;i<arr.length;i++){ const v=arr[i]; prev = (prev===null)? v : prev + k*(arr[i]-prev); out.push(prev); }
@@ -233,18 +235,24 @@
     return out;
   }
   function drawChart(){
-    if(!ctx || CANDLES.length<5){ ctx.clearRect(0,0,cvs.width,cvs.height); return; }
+    if(!ctx){ return; }
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    if(CANDLES.length<5){ return; }
     const padL=38, padR=8, padT=8, padB=16;
     const w = cvs.width, h = cvs.height;
-    ctx.clearRect(0,0,w,h);
     const lows = CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
-    const min = Math.min(...lows), max=Math.max(...highs);
-    const x0 = padL, x1 = w-padR, y0=padT, y1=h-padB;
+    let min = Math.min(...lows), max = Math.max(...highs);
+    const latestPrice = (typeof LIVE_PRICE === 'number' && !Number.isNaN(LIVE_PRICE)) ? LIVE_PRICE : null;
+    if(latestPrice !== null){
+      min = Math.min(min, latestPrice);
+      max = Math.max(max, latestPrice);
+    }
+    const x0 = padL, x1 = w-padR, y0 = padT, y1 = h-padB;
     const n = CANDLES.length;
     const cw = (x1-x0)/n;
 
     // grid
-    ctx.strokeStyle="#eee"; ctx.lineWidth=1;
+    ctx.strokeStyle='#eee'; ctx.lineWidth=1;
     for(let i=0;i<4;i++){ const y=y0 + (y1-y0)*i/3; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
 
     const closes=CANDLES.map(d=>d.close);
@@ -254,9 +262,9 @@
     // candles
     for(let i=0;i<n;i++){
       const d=CANDLES[i], x = x0 + i*cw + cw*0.5;
-      ctx.strokeStyle="#999"; ctx.beginPath(); ctx.moveTo(x, yv(d.high)); ctx.lineTo(x, yv(d.low)); ctx.stroke();
+      ctx.strokeStyle='#999'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x, yv(d.high)); ctx.lineTo(x, yv(d.low)); ctx.stroke();
       const up = d.close>=d.open;
-      ctx.fillStyle = up? "#16a34a":"#dc2626";
+      ctx.fillStyle = up? '#16a34a':'#dc2626';
       const yOpen=yv(d.open), yClose=yv(d.close);
       const bh = Math.max(1, Math.abs(yClose - yOpen));
       ctx.fillRect(x-cw*0.28, Math.min(yOpen,yClose), cw*0.56, bh);
@@ -264,11 +272,24 @@
 
     // S/R (15 candle)
     const win = CANDLES.slice(-15);
-    const s = Math.min(...win.map(d=>d.low));
-    const r = Math.max(...win.map(d=>d.high));
-    ctx.strokeStyle="#10b981"; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(x0,yv(s)); ctx.lineTo(x1,yv(s)); ctx.stroke();
-    ctx.strokeStyle="#ef4444"; ctx.beginPath(); ctx.moveTo(x0,yv(r)); ctx.lineTo(x1,yv(r)); ctx.stroke();
-    ctx.setLineDash([]);
+    if(win.length){
+      const s = Math.min(...win.map(d=>d.low));
+      const r = Math.max(...win.map(d=>d.high));
+      ctx.setLineDash([4,3]);
+      ctx.lineWidth=2.5; ctx.strokeStyle='#10b981';
+      ctx.beginPath(); ctx.moveTo(x0,yv(s)); ctx.lineTo(x1,yv(s)); ctx.stroke();
+      ctx.strokeStyle='#ef4444';
+      ctx.beginPath(); ctx.moveTo(x0,yv(r)); ctx.lineTo(x1,yv(r)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Live price line
+    if(latestPrice !== null){
+      ctx.strokeStyle='#facc15';
+      ctx.lineWidth=3;
+      const yp = yv(latestPrice);
+      ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1, yp); ctx.stroke();
+    }
 
     // MAs
     function line(arr, color){
@@ -279,7 +300,7 @@
       }
       ctx.stroke();
     }
-    line(ema9,"#16a34a"); line(ma20,"#2563eb"); line(ema50,"#7c3aed");
+    line(ema9,'#16a34a'); line(ma20,'#2563eb'); line(ema50,'#7c3aed');
   }
 
   // ---------- UI wiring ----------
@@ -291,6 +312,9 @@
     $('#sym').textContent = s.symbol || 'XAUUSDc';
     $('#price').textContent = fmt(s.price||0);
     colorize($('#price'), (s.tick_dir||0));
+    const livePrice = Number(s.price);
+    LIVE_PRICE = (s.online && Number.isFinite(livePrice)) ? livePrice : null;
+    drawChart();
     $('#equity').textContent = fmt(s.equity||0);
     $('#free').textContent   = fmt(s.free_margin||0);
     $('#dailyPL').textContent= fmt(s.daily_pl||0);
@@ -325,15 +349,23 @@
     });
 
     const tbH = tb('tblHist'); tbH.innerHTML='';
-    (s.history_today||[]).forEach((r,i)=>{
-      const pl = Number(r.profit||0);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i+1}</td><td>${r.symbol||''}</td><td>${r.side||''}</td>
-        <td>${fmt(r.lot||0)}</td><td>${fmt(r.start||0)}</td><td>${fmt(r.close||0)}</td>
-        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${r.time_utc||''}</td>`;
-      tbH.appendChild(tr);
-    });
-
+    const hist = s.history_today||[];
+    if(hist.length===0){
+      const tr=document.createElement('tr');
+      const td=document.createElement('td');
+      td.colSpan=9; td.textContent='Belum ada posisi yang ditutup hari ini.';
+      td.style.textAlign='center'; td.className='mut';
+      tr.appendChild(td); tbH.appendChild(tr);
+    }else{
+      hist.forEach((r,i)=>{
+        const pl = Number(r.profit||0);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${r.symbol||''}</td><td>${r.side||''}</td>
+          <td>${fmt(r.lot||0)}</td><td>${fmt(r.start||0)}</td><td>${fmt(r.close||0)}</td>
+          <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${r.time_utc||''}</td><td>${r.exec||'UNKNOWN'}</td>`;
+        tbH.appendChild(tr);
+      });
+    }
     const qBody = tb('tblQuote'); qBody.innerHTML='';
     (s.quotes||[]).forEach((q)=>{
       const tr = document.createElement('tr');
@@ -366,6 +398,7 @@
         open:+d.open, high:+d.high, low:+d.low, close:+d.close
       }));
       resizeCanvas();
+      drawChart();
     }catch(e){}
   }
 
