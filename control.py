@@ -5,6 +5,7 @@
 #            /api/strategy/(toggle|tpsm|tpsb|abe), /api/action/(buy|sell|add|close|breakeven)
 
 import os, json, time, threading
+from datetime import datetime, timezone, timedelta
 from threading import Thread, Event, RLock
 from flask import Flask, request, jsonify, send_from_directory
 import MetaTrader5 as mt5
@@ -80,6 +81,8 @@ STATE = {
     "session_active": False, "session_start_ts": 0.0,
     "session_be_hit": False, "session_peak_pl": 0.0,
 }
+
+CLOSE_REASON = {}
 
 # ========== MT5 helper (semua dibungkus MTX) ==========
 def mt5_init():
@@ -180,29 +183,71 @@ def candles(sym, tf, count):
 
 def account_snapshot():
     with MTX:
-        try: ai = mt5.account_info()
-        except: ai = None
-    if not ai: return 0.0, 0.0, 0.0
-    return float(ai.equity), float(ai.margin), float(ai.margin_free)
+        try:
+            return mt5.account_info()
+        except:
+            return None
+
 
 def float_pl(sym):
-    pos = positions(sym)
-    t = tick(sym)
-    if t is None: return 0.0
-    last = (t.last if t.last>0 else 0.0)
-    price_buy = t.ask or last
-    price_sell = t.bid or last
-    pl = 0.0
-    for p in pos:
-        cs = getattr(p, 'contract_size', 1.0)
-        if p.type == mt5.POSITION_TYPE_BUY:
-            pl += (price_sell - p.price_open) * p.volume * cs
-        else:
-            pl += (p.price_open - price_buy) * p.volume * cs
-    return float(pl)
+    total = 0.0
+    for p in positions(sym):
+        total += float(getattr(p, 'profit', 0.0) or 0.0)
+    return total
+
 
 def open_count(sym): return len(positions(sym))
 def total_lot(sym):  return sum(p.volume for p in positions(sym))
+
+# ========== History helper ==========
+
+def today_range():
+    now = datetime.now()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp()), int(now.timestamp())
+
+def get_history_today():
+    start_ts, end_ts = today_range()
+    with MTX:
+        try:
+            mt5.history_select(start_ts, end_ts)
+            deals = mt5.history_deals_get()
+        except Exception:
+            deals = None
+    records = []
+    total_pl = 0.0
+    if deals:
+        grouped = {}
+        for d in deals:
+            ticket = getattr(d, 'position_id', getattr(d, 'ticket', None))
+            if ticket is None:
+                continue
+            grouped.setdefault(ticket, []).append(d)
+        for ticket, rows in grouped.items():
+            closes = [r for r in rows if getattr(r, 'entry', None) == mt5.TRADE_DEAL_ENTRY_OUT]
+            if not closes:
+                continue
+            lot = sum(float(getattr(r, 'volume', 0.0) or 0.0) for r in closes)
+            profit = sum(float(getattr(r, 'profit', 0.0) or 0.0) for r in closes)
+            total_pl += profit
+            side = 'BUY' if profit >= 0 else 'SELL'
+            first = min(rows, key=lambda r: getattr(r, 'time', 0))
+            last = max(rows, key=lambda r: getattr(r, 'time', 0))
+            symbol = getattr(last, 'symbol', getattr(first, 'symbol', ''))
+            ticket_id = int(getattr(last, 'position_id', getattr(last, 'ticket', 0)) or 0)
+            exec_reason = CLOSE_REASON.get(ticket_id) or 'UNKNOWN'
+            records.append({
+                'symbol': symbol,
+                'side': side,
+                'lot': round(lot, 2),
+                'start': getattr(first, 'price', 0.0),
+                'close': getattr(last, 'price', 0.0),
+                'profit': profit,
+                'time_utc': datetime.utcfromtimestamp(getattr(last, 'time', 0)).strftime('%H:%M:%S'),
+                'exec': exec_reason,
+            })
+    records.sort(key=lambda r: r['time_utc'], reverse=True)
+    return records[:10], total_pl
 
 # ========== SR-gate / Auto-entry ==========
 def nearest_sr_pct(sym):
@@ -246,6 +291,7 @@ def order_send_with_fallback(sym, side, lot):
 
 def close_all(sym, reason="manual"):
     pos = positions(sym); n = 0
+    label = reason.upper() if isinstance(reason, str) else str(reason)
     for p in pos:
         close_side = "SELL" if p.type==mt5.POSITION_TYPE_BUY else "BUY"
         t = tick(sym)
@@ -259,7 +305,9 @@ def close_all(sym, reason="manual"):
         }
         with MTX:
             res = mt5.order_send(req)
-        if res and res.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED): n += 1
+        if res and res.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED):
+            CLOSE_REASON[int(p.ticket)] = label
+            n += 1
     return n
 
 # ========== Cooldown / Session / Auto ==========
@@ -296,7 +344,7 @@ def try_break_event(sym):
     if open_count(sym) < SETUP["session"]["min_positions_for_be"]: return
     pl = float_pl(sym)
     if pl >= SETUP["session"]["be_min_profit"]:
-        close_all(sym, reason="break-event"); STATE["session_be_hit"] = True
+        close_all(sym, "BREAKEVEN"); STATE["session_be_hit"] = True
         end_session(); set_cooldown(10)
 
 def session_tick(sym):
@@ -305,11 +353,11 @@ def session_tick(sym):
     pl = float_pl(sym)
     if pl > STATE["session_peak_pl"]: STATE["session_peak_pl"] = pl
     if pl >= SETUP["session"]["profit_target"]:
-        close_all(sym, "session-profit"); end_session(); return
+        close_all(sym, "SESSION-PROFIT"); end_session(); return
     if pl <= SETUP["session"]["loss_limit"]:
-        close_all(sym, "session-loss"); end_session(); return
+        close_all(sym, "SESSION-LOSS"); end_session(); return
     if elapsed >= SETUP["session"]["max_duration_sec"]:
-        close_all(sym, "session-timeout"); end_session(); return
+        close_all(sym, "SESSION-TIMEOUT"); end_session(); return
 
 def auto_m1_tick(sym):
     if not (SETUP["auto_mode"] and SETUP["auto_m1"]["enabled"]): return
@@ -391,9 +439,13 @@ def api_status():
         symbol_ensure(sym)
 
         t  = tick(sym)
-        eq, margin, free = account_snapshot()
+        ai = account_snapshot()
+        digits = getattr(ai, 'currency_digits', 2) if ai else 2
+        eq = float(getattr(ai, 'equity', 0.0) or 0.0)
+        free = float(getattr(ai, 'margin_free', 0.0) or 0.0)
         oc = open_count(sym)
         tl = total_lot(sym)
+        history, daily_pl_total = get_history_today()
         pl = float_pl(sym)
 
         price = 0.0; tick_dir = 0
@@ -413,22 +465,21 @@ def api_status():
             "online": True, "locked": STATE["locked"], "mode": "SIDE",
             "auto_mode": SETUP["auto_mode"], "symbol": sym,
             "price": round(price,2), "tick_dir": tick_dir,
-            "equity": round(eq,2), "daily_pl": 0.00,
+            "equity": round(eq, digits), "daily_pl": round(daily_pl_total, digits),
             "daily_target": SETUP["daily_target"], "daily_min": SETUP["daily_min"],
-            "free_margin": round(free,2),
+            "free_margin": round(free, digits),
             "tpsm_auto": SETUP["tpsm_auto"], "tpsb_auto": SETUP["tpsb_auto"], "abe_auto": SETUP["abe_auto"],
             "vSL": 0.0, "best_pl": STATE["session_peak_pl"], "adds_done": 0, "timer": STATE["timer"],
-            "total_lot": round(tl,2), "open_count": oc, "float_pl": round(pl,2),
+            "total_lot": round(tl,2), "open_count": oc, "float_pl": round(pl, digits),
             "cooldown": STATE["cooldown"], "cooldown_remain": STATE["timer"],
             "open_positions": [
                 {
             "side": ("BUY" if p.type==mt5.POSITION_TYPE_BUY else "SELL"),
             "lot": p.volume, "entry": p.price_open,
-            # Fix for 'TradePosition' object has no attribute 'contract_size'
-            "pl": ((price - p.price_open) if p.type==mt5.POSITION_TYPE_BUY else (p.price_open - price)) * p.volume * getattr(p, 'contract_size', 1.0)
+            "pl": round(float(getattr(p, 'profit', 0.0) or 0.0), digits)
                 } for p in positions(sym)
             ],
-            "history_today": [],
+            "history_today": history,
             "quotes": quotes
         })
     except Exception as e:
@@ -525,7 +576,7 @@ def api_be():
     need = float(SETUP["session"]["be_min_profit"])
     if float_pl(sym) >= need and open_count(sym) >= SETUP["session"]["min_positions_for_be"]:
         STATE["locked"] = True
-        close_all(sym, "breakeven-button")
+        close_all(sym, "BREAKEVEN")
         STATE["locked"] = False
         STATE["session_be_hit"] = True
         end_session(); set_cooldown(10)
