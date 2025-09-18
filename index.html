@@ -92,6 +92,21 @@
           <div>Daily P/L: <b id="dailyPL">0.00</b></div>
         </div>
         <div class="bar" style="margin-top:4px"><i id="progress" style="width:0%;background:linear-gradient(90deg,#fecaca,#e5e7eb,#bbf7d0)"></i></div>
+        <div class="box" style="margin-top:6px">
+          <div class="row">
+            <div>Total Lot: <b id="totalLotTop">0.00</b> (<span id="openCountTop">0</span>)</div>
+            <div>Floating: <b id="floatPLTop">0.00</b></div>
+          </div>
+          <div style="margin-top:6px;max-height:140px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+            <table id="tblOpenTop">
+              <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <div class="mut">Cooldown:</div><b id="coolTop">Ready</b>
+          </div>
+        </div>
         <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
           <label class="switch"><input id="swTPSM" type="checkbox"><span>Auto TPSM</span></label>
           <label class="switch"><input id="swTPSB" type="checkbox"><span>Auto TPSB</span></label>
@@ -211,6 +226,11 @@
   const ctx = cvs.getContext('2d');
   const CHART_HEIGHT = 220;
   let lastWidth = 0;
+  let CANDLES = []; // {time, open, high, low, close}
+  let LIVE_PRICE = null;
+  let CURRENT_THRESHOLDS = null;
+  const AUTO_DEBOUNCE_MS = 5000;
+  const LAST_AUTO_TRADE = {buy:0, sell:0};
   function resizeCanvas(){
     const rect = cvs.getBoundingClientRect();
     const targetHeight = CHART_HEIGHT;
@@ -222,8 +242,6 @@
     }
   }
   window.addEventListener('resize', resizeCanvas);
-  let CANDLES = []; // {time, open, high, low, close}
-  let LIVE_PRICE = null;
   function ema(arr, p){
     const k = 2/(p+1); let out = [], prev=null;
     for(let i=0;i<arr.length;i++){ const v=arr[i]; prev = (prev===null)? v : prev + k*(arr[i]-prev); out.push(prev); }
@@ -237,7 +255,7 @@
   function drawChart(){
     if(!ctx){ return; }
     ctx.clearRect(0,0,cvs.width,cvs.height);
-    if(CANDLES.length<5){ return; }
+    if(CANDLES.length<5){ CURRENT_THRESHOLDS = null; return; }
     const padL=38, padR=8, padT=8, padB=16;
     const w = cvs.width, h = cvs.height;
     const lows = CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
@@ -270,20 +288,51 @@
       ctx.fillRect(x-cw*0.28, Math.min(yOpen,yClose), cw*0.56, bh);
     }
 
-    // S/R (15 candle)
     const win = CANDLES.slice(-15);
     if(win.length){
-      const s = Math.min(...win.map(d=>d.low));
-      const r = Math.max(...win.map(d=>d.high));
+      const support = Math.min(...win.map(d=>d.low));
+      const resistance = Math.max(...win.map(d=>d.high));
+      const range = Math.max(1e-6, resistance - support);
+      const mid = support + range/2;
+      const zone = range * 0.05;
+      const topLinePrice = resistance - range * 0.10;
+      const bottomLinePrice = support + range * 0.10;
+      CURRENT_THRESHOLDS = {top: topLinePrice, bottom: bottomLinePrice, resistance, support, mid};
+
+      const fillBand = (color, high, low)=>{
+        const yTop = yv(high);
+        const yBottom = yv(low);
+        ctx.fillStyle = color;
+        ctx.fillRect(x0, Math.min(yTop, yBottom), (x1-x0), Math.abs(yBottom - yTop));
+      };
+      if(zone > 0){
+        fillBand('rgba(239,68,68,0.16)', resistance, Math.max(support, resistance - zone));
+        const midUpper = Math.min(resistance, mid + zone/2);
+        const midLower = Math.max(support, mid - zone/2);
+        fillBand('rgba(250,204,21,0.18)', midUpper, midLower);
+        fillBand('rgba(34,197,94,0.16)', Math.min(resistance, support + zone), support);
+      }
+
       ctx.setLineDash([4,3]);
       ctx.lineWidth=2.5; ctx.strokeStyle='#10b981';
-      ctx.beginPath(); ctx.moveTo(x0,yv(s)); ctx.lineTo(x1,yv(s)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(support)); ctx.lineTo(x1,yv(support)); ctx.stroke();
       ctx.strokeStyle='#ef4444';
-      ctx.beginPath(); ctx.moveTo(x0,yv(r)); ctx.lineTo(x1,yv(r)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(resistance)); ctx.lineTo(x1,yv(resistance)); ctx.stroke();
       ctx.setLineDash([]);
+
+      ctx.strokeStyle='#111'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(x0, yv(topLinePrice)); ctx.lineTo(x1, yv(topLinePrice)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yv(bottomLinePrice)); ctx.lineTo(x1, yv(bottomLinePrice)); ctx.stroke();
+    }else{
+      CURRENT_THRESHOLDS = null;
     }
 
-    // Live price line
+    const cssWidth = lastWidth || (cvs.getBoundingClientRect().width || (cvs.width/2));
+    const ratio = cssWidth ? (cvs.width / cssWidth) : 1;
+    const blueX = Math.max(x0, (x1 - 30 * ratio));
+    ctx.strokeStyle='#1d4ed8'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(blueX, y0); ctx.lineTo(blueX, y1); ctx.stroke();
+
     if(latestPrice !== null){
       ctx.strokeStyle='#facc15';
       ctx.lineWidth=3;
@@ -291,7 +340,6 @@
       ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1, yp); ctx.stroke();
     }
 
-    // MAs
     function line(arr, color){
       ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
       for(let i=0;i<n;i++){
@@ -301,6 +349,24 @@
       ctx.stroke();
     }
     line(ema9,'#16a34a'); line(ma20,'#2563eb'); line(ema50,'#7c3aed');
+  }
+
+  function maybeAutoTrade(status){
+    if(!status || !status.online || status.locked || status.cooldown || !CURRENT_THRESHOLDS){ return; }
+    const price = Number(status.price || 0);
+    if(!Number.isFinite(price)){ return; }
+    const now = Date.now();
+    const lotInput = document.getElementById('lot');
+    const lotVal = Number(lotInput && lotInput.value ? lotInput.value : 0.01) || 0.01;
+    const triggerSell = price >= CURRENT_THRESHOLDS.top && (now - LAST_AUTO_TRADE.sell) > AUTO_DEBOUNCE_MS;
+    const triggerBuy  = price <= CURRENT_THRESHOLDS.bottom && (now - LAST_AUTO_TRADE.buy) > AUTO_DEBOUNCE_MS;
+    if(triggerSell){
+      LAST_AUTO_TRADE.sell = now;
+      post('/api/action/sell',{lot: lotVal}).then(()=>setTimeout(pull,400)).catch(()=>{ LAST_AUTO_TRADE.sell = 0; });
+    }else if(triggerBuy){
+      LAST_AUTO_TRADE.buy = now;
+      post('/api/action/buy',{lot: lotVal}).then(()=>setTimeout(pull,400)).catch(()=>{ LAST_AUTO_TRADE.buy = 0; });
+    }
   }
 
   // ---------- UI wiring ----------
@@ -315,6 +381,7 @@
     const livePrice = Number(s.price);
     LIVE_PRICE = (s.online && Number.isFinite(livePrice)) ? livePrice : null;
     drawChart();
+    maybeAutoTrade(s);
     $('#equity').textContent = fmt(s.equity||0);
     $('#free').textContent   = fmt(s.free_margin||0);
     $('#dailyPL').textContent= fmt(s.daily_pl||0);
@@ -332,22 +399,33 @@
     $('#timer').textContent= s.timer||'00:00';
     $('#adds').textContent = s.adds_done||0;
 
-    $('#totalLot').textContent = fmt(s.total_lot||0);
-    $('#openCount').textContent = s.open_count||0;
-    $('#floatPL').textContent = fmt(s.float_pl||0);
+    const totalLotFmt = fmt(s.total_lot||0);
+    $('#totalLot').textContent = totalLotFmt;
+    const totalLotTopEl = document.getElementById('totalLotTop'); if(totalLotTopEl) totalLotTopEl.textContent = totalLotFmt;
+    const openCountVal = s.open_count||0;
+    $('#openCount').textContent = openCountVal;
+    const openCountTopEl = document.getElementById('openCountTop'); if(openCountTopEl) openCountTopEl.textContent = openCountVal;
+    const floatFmt = fmt(s.float_pl||0);
+    $('#floatPL').textContent = floatFmt;
     colorize($('#floatPL'), s.float_pl||0);
-    $('#cool').textContent = s.cooldown? ('Cooling '+(s.cooldown_remain||'')):'Ready';
+    const floatTopEl = document.getElementById('floatPLTop'); if(floatTopEl){ floatTopEl.textContent = floatFmt; colorize(floatTopEl, s.float_pl||0); }
+    const coolText = s.cooldown? ('Cooling '+(s.cooldown_remain||'')):'Ready';
+    $('#cool').textContent = coolText;
+    const coolTopEl = document.getElementById('coolTop'); if(coolTopEl) coolTopEl.textContent = coolText;
 
-    const tbOpen = tb('tblOpen'); tbOpen.innerHTML='';
-    (s.open_positions||[]).forEach((p,i)=>{
-      const tr = document.createElement('tr');
+    const positions = s.open_positions||[];
+    const rowHtml = positions.map((p,i)=>{
       const pl = Number(p.pl||0);
-      tr.innerHTML = `<td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
+      return `<tr><td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
         <td>${fmt(p.entry||0)}</td><td>${fmt(s.price||0)}</td>
-        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td>`;
-      tbOpen.appendChild(tr);
-    });
-
+        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td></tr>`;
+    }).join('');
+    const tbOpenMain = tb('tblOpen');
+    const tblTop = document.getElementById('tblOpenTop');
+    const tbOpenTop = tblTop ? tblTop.querySelector('tbody') : null;
+    const emptyRow = '<tr><td colspan="6" class="mut" style="text-align:center">Tidak ada posisi terbuka.</td></tr>';
+    if(tbOpenMain){ tbOpenMain.innerHTML = rowHtml || emptyRow; }
+    if(tbOpenTop){ tbOpenTop.innerHTML = rowHtml || emptyRow; }
     const tbH = tb('tblHist'); tbH.innerHTML='';
     const hist = s.history_today||[];
     if(hist.length===0){
