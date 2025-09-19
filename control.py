@@ -5,6 +5,7 @@
 #            /api/strategy/(toggle|tpsm|tpsb|abe), /api/action/(buy|sell|add|close|breakeven)
 
 import os, json, time, threading
+import ctypes
 from datetime import datetime, timezone, timedelta
 from threading import Thread, Event, RLock
 from flask import Flask, request, jsonify, send_from_directory
@@ -945,6 +946,78 @@ def close_all(sym, reason="manual"):
             n += 1
     return n, fails
 
+# ========== Auto-Click Helpers (ctypes) ==========
+def _win_leftclick(x: int, y: int):
+    """Send a left-click event to screen coordinates using ctypes."""
+    try:
+        # Constants for mouse_event
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        
+        # Ensure coordinates are integers
+        x = int(x)
+        y = int(y)
+
+        # Move cursor and click
+        ctypes.windll.user32.SetCursorPos(x, y)
+        time.sleep(0.05) # short delay after moving
+        ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        time.sleep(0.05) # short delay between down and up
+        ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    except Exception as e:
+        print(f"[_win_leftclick] EXC: {e}", flush=True)
+
+def _get_open_count():
+    """Get the number of open positions, with error handling."""
+    try:
+        # positions() is already thread-safe with MTX
+        return len(positions() or [])
+    except Exception:
+        return 0
+
+def _get_click_xy():
+    """Get valid click coordinates from SETUP."""
+    coords = SETUP.get("click_xy", [])
+    if not isinstance(coords, list):
+        return []
+    
+    valid_coords = []
+    for item in coords:
+        if isinstance(item, dict):
+            x = item.get("x")
+            y = item.get("y")
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)) and x > 0 and y > 0:
+                valid_coords.append({"x": int(x), "y": int(y)})
+    return valid_coords
+
+def close_all_via_clicker(delay_ms=300):
+    """
+    Closes open positions by simulating mouse clicks on the MT5 terminal.
+    Clicks are performed from the bottom-most position to the top-most.
+    """
+    try:
+        open_n = _get_open_count()
+        if open_n <= 0:
+            return True, "Tidak ada posisi terbuka untuk ditutup."
+        coords = _get_click_xy()
+        if not coords:
+            return False, "Koordinat klik XY belum di-setup."
+        n_to_click = min(open_n, len(coords))
+        pick = list(reversed(coords[:n_to_click]))
+        print(f"[AUTOCLICK] Menutup {len(pick)} posisi (bottom->top)...", flush=True)
+        for i, coord in enumerate(pick):
+            x, y = coord.get("x"), coord.get("y")
+            print(f"[AUTOCLICK] Klik #{i+1} di ({x},{y})", flush=True)
+            _win_leftclick(x, y)
+            time.sleep(delay_ms / 1000.0)
+        msg = f"Clicked {len(pick)} rows (bottom->top)."
+        end_session_no_cooldown()
+        persist_save()
+        return True, msg
+    except Exception as e:
+        print(f"[AUTOCLICK] EXC: {e}", flush=True)
+        return False, str(e)
+
 # ========== Cooldown / Session / Auto ==========
 def set_cooldown(sec):
     STATE["cooldown"] = True
@@ -1270,10 +1343,12 @@ def api_add():
 def api_close():
     STATE["locked"] = True
     n, fails = close_all(SETUP["symbol"], reason="manual")
+    ok, msg = close_all_via_clicker(delay_ms=300)
     STATE["locked"] = False
     # Manual close-all: jangan aktifkan cooldown, hanya reset state sesi
     end_session_no_cooldown(); persist_save()
     return jsonify({"ok": True, "closed": n, "fails": fails})
+    return jsonify({"ok": ok, "msg": msg})
 
 import pyautogui
 import time
@@ -1300,6 +1375,10 @@ def api_auto_click_close_all():
     except Exception as e:
         STATE["locked"] = False
         return jsonify({"ok": False, "msg": str(e)})
+    # The delay can be passed from the request body in the future if needed
+    ok, msg = close_all_via_clicker(delay_ms=300)
+    STATE["locked"] = False
+    return jsonify({"ok": ok, "msg": msg})
 
 @app.route("/api/action/breakeven", methods=["POST"])
 def api_be():
