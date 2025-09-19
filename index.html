@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-  <title>THB Indodam</title>
+  <title>INDODAM</title>
   <style>
     :root{
       --bg:#ffffff; --ink:#0a0a0a; --mut:#6b7280; --line:#e5e7eb;
@@ -27,6 +27,54 @@
     .screen{flex:1;overflow:auto}
     .panel{display:none; padding:8px}
     .panel.active{display:block}
+
+    /* Mobile Navigation */
+    .mobile-nav{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000}
+    .mobile-nav.show{display:flex;align-items:center;justify-content:center}
+    .mobile-menu{background:#fff;border-radius:12px;padding:20px;min-width:280px;max-width:90vw}
+    .mobile-menu h3{margin:0 0 15px 0;text-align:center}
+    .mobile-menu .tab{display:block;width:100%;margin:5px 0;padding:12px;border-radius:8px;border:1px solid var(--line);background:#fafafa;text-align:left}
+    .mobile-menu .tab.active{background:#fff;border-color:var(--blue)}
+    .hamburger{display:none;position:absolute;top:8px;right:8px;width:24px;height:24px;cursor:pointer;z-index:10}
+    .hamburger span{display:block;width:100%;height:2px;background:var(--ink);margin:4px 0;border-radius:1px}
+    .hamburger span:nth-child(1){transform-origin:0 0}
+    .hamburger span:nth-child(2){transition:opacity 0.3s}
+    .hamburger span:nth-child(3){transform-origin:0 100%}
+    .hamburger.open span:nth-child(1){transform:rotate(45deg)}
+    .hamburger.open span:nth-child(2){opacity:0}
+    .hamburger.open span:nth-child(3){transform:rotate(-45deg)}
+
+    /* Particles */
+    #particles-js{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;pointer-events:none}
+    .particles-theme-light .particle{color:#2563eb}
+    .particles-theme-dark .particle{color:#7c3aed}
+    .particles-theme-green .particle{color:#16a34a}
+    .particles-theme-red .particle{color:#dc2626}
+
+    /* Contact Form */
+    .contact-form{display:none;padding:15px;border:1px solid var(--line);border-radius:8px;margin-top:10px;background:#fafafa}
+    .contact-form.show{display:block}
+    .contact-form h4{margin:0 0 10px 0}
+    .contact-form input,.contact-form textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin:5px 0;font-size:12px}
+    .contact-form textarea{height:80px;resize:vertical}
+    .contact-form .btn{margin-top:10px}
+
+    /* Toast Notifications */
+    .toast-container{position:fixed;top:20px;right:20px;z-index:10000}
+    .toast{display:flex;align-items:center;padding:12px 16px;border-radius:8px;margin-bottom:10px;min-width:300px;max-width:400px;animation:slideIn 0.3s ease-out}
+    .toast.success{background:#eafff2;border:1px solid #bbf7d0;color:#166534}
+    .toast.error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+    .toast.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+    .toast .icon{margin-right:10px;font-size:16px}
+    .toast .message{flex:1;font-size:12px}
+    .toast .close{cursor:pointer;margin-left:10px;font-size:16px}
+    @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes fadeOut{from{opacity:1}to{opacity:0}}
+
+    /* Performance optimizations */
+    .lazy-load{opacity:0;transition:opacity 0.3s}
+    .lazy-load.loaded{opacity:1}
+    .optimized-scroll{scroll-behavior:smooth;will-change:scroll-position}
 
     .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .row + .row{margin-top:6px}
@@ -65,22 +113,42 @@
     canvas{display:block;width:100%;height:220px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .lot-wrap{display:flex;gap:6px;align-items:center}
     .lot{width:56px;padding:6px;border:1px solid var(--line);border-radius:8px}
+    .msg{margin-top:6px;padding:8px;border-radius:8px;border:1px solid var(--line);display:none}
+    .msg.show{display:block}
+    .msg.ok{background:#eafff2;border-color:#bbf7d0;color:#166534}
+    .msg.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+    .msg.warn{background:#fff7ed;border-color:#fed7aa;color:#92400e}
   </style>
 </head>
 <body>
 <div class="wrap">
   <!-- HEADER -->
   <header>
-    <h1>THB Indodam</h1>
+    <h1>INDODAM</h1>
     <span id="badgeConn" class="badge off">OFFLINE</span>
     <span id="badgeMode" class="badge warn">MANUAL</span>
     <span id="badgeTrend" class="badge">SIDE</span>
+    <div class="hamburger" id="hamburger">
+      <span></span><span></span><span></span>
+    </div>
   </header>
+
+  <!-- MOBILE NAVIGATION -->
+  <div class="mobile-nav" id="mobileNav">
+    <div class="mobile-menu">
+      <h3>Menu</h3>
+      <div class="tab" data-tab="quote">Setup</div>
+      <div class="tab active" data-tab="chart">Chart</div>
+      <div class="tab" data-tab="trade">Trade</div>
+      <div class="tab" data-tab="hist">Riwayat</div>
+      <div class="tab" id="contactTab">Contact</div>
+    </div>
+  </div>
 
   <!-- SCREEN -->
   <div class="screen">
     <!-- CHART (default) -->
-    <section id="p-chart" class="panel active">
+  <section id="p-chart" class="panel active">
       <div class="box">
         <div class="row">
           <div><span class="mut">Symbol</span> <b id="sym">XAUUSDc</b></div>
@@ -99,22 +167,25 @@
           </div>
           <div style="margin-top:6px;max-height:140px;overflow:auto;border:1px solid var(--line);border-radius:8px">
             <table id="tblOpenTop">
-              <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th></tr></thead>
+              <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th><th>Open By</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
           <div class="row" style="margin-top:6px">
             <div class="mut">Cooldown:</div><b id="coolTop">Ready</b>
           </div>
+          <p class="hint" id="auto60Info" style="margin-top:4px">Auto60s: waiting…</p>
         </div>
         <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
           <label class="switch"><input id="swTPSM" type="checkbox"><span>Auto TPSM</span></label>
           <label class="switch"><input id="swTPSB" type="checkbox"><span>Auto TPSB</span></label>
-          <label class="switch"><input id="swABE"  type="checkbox"><span>Auto Breakeven</span></label>
+          <label class="switch"><input id="swABE"  type="checkbox"><span>Auto BEP</span></label>
+          <label class="switch"><input id="swSR"   type="checkbox"><span>Auto SR</span></label>
+          <label class="switch"><input id="swA60"  type="checkbox"><span>Auto 60s</span></label>
         </div>
         <div class="grid2" style="margin-top:6px">
           <button class="btn b-close" id="btnClose">Close All</button>
-          <button class="btn b-be" id="btnBE">Breakeven</button>
+          <button class="btn b-be" id="btnBE">Auto BEP</button>
           <button class="btn b-add" id="btnAdd">+ Add</button>
           <button class="btn b-toggle" id="btnAuto">Auto/Manual</button>
         </div>
@@ -134,14 +205,33 @@
           <button class="btn b-sell" id="btnSell">SELL</button>
         </div>
       </div>
+      <div id="msg" class="msg" role="status" aria-live="polite"></div>
+      <div id="diag" class="hint" style="margin-top:6px;line-height:1.4"></div>
       <p class="hint" style="margin-top:4px">Eksekusi mengikuti kompas tren & TPS; tombol disable saat offline/locked.</p>
     </section>
 
-    <!-- QUOTE -->
+    <!-- SETUP -->
     <section id="p-quote" class="panel">
       <div class="box">
+        <h4>Setup XY Close Trade</h4>
+        <div class="hint" style="margin-bottom:6px">
+          1) Install MouseInfo: jalankan perintah di CMD/PowerShell:<br>
+          <code>pip install mouseinfo pyautogui</code> &nbsp; lalu: &nbsp; <code>python -m mouseinfo</code><br>
+          2) Arahkan kursor di tombol "x" baris teratas trade MT5, salin Screen X/Y ke kolom di bawah. Klik Save.
+        </div>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:8px;max-height:340px;overflow:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr><th style="text-align:left">Slot</th><th>X</th><th>Y</th></tr></thead>
+            <tbody id="xyBody"></tbody>
+          </table>
+          <div class="row" style="margin-top:8px;gap:8px">
+            <button class="btn b-be" id="btnSaveXY">Save</button>
+            <span class="hint">Menyimpan ke server (persist setup.json).</span>
+          </div>
+        </div>
+        <hr style="margin:10px 0;border:none;border-top:1px solid var(--line)">
         <h4>Quote</h4>
-        <div style="border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto">
+        <div style="border:1px solid var(--line);border-radius:8px;max-height:200px;overflow:auto">
           <table id="tblQuote">
             <thead><tr><th>Symbol</th><th>Bid</th><th>Ask</th></tr></thead>
             <tbody></tbody>
@@ -160,7 +250,7 @@
         </div>
         <div style="margin-top:6px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px">
           <table id="tblOpen">
-            <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th></tr></thead>
+            <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th><th>Open By</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -174,10 +264,10 @@
     <section id="p-hist" class="panel">
       <div class="box">
         <h4>History Hari Ini</h4>
-        <div style="max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+        <div style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px">
           <table id="tblHist">
             <thead><tr>
-              <th>#</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Start</th><th>Close</th><th>Profit</th><th>UTC</th><th>Exec</th>
+              <th>#</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Start</th><th>Close</th><th>Profit</th><th>UTC</th><th>Close By</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -188,11 +278,26 @@
 
   <!-- TABS -->
   <nav class="tabs">
-    <div class="tab" data-tab="quote">Quote</div>
+    <div class="tab" data-tab="quote">Setup</div>
     <div class="tab active" data-tab="chart">Chart</div>
     <div class="tab" data-tab="trade">Trade</div>
     <div class="tab" data-tab="hist">Riwayat</div>
   </nav>
+
+  <!-- PARTICLES -->
+  <div id="particles-js"></div>
+
+  <!-- CONTACT FORM -->
+  <div class="contact-form" id="contactForm">
+    <h4>Contact Us</h4>
+    <input type="text" id="contactName" placeholder="Your Name" required>
+    <input type="email" id="contactEmail" placeholder="Your Email" required>
+    <textarea id="contactMessage" placeholder="Your Message" required></textarea>
+    <button class="btn b-be" id="btnSendContact">Send Message</button>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div class="toast-container" id="toastContainer"></div>
 </div>
 
 <script>
@@ -200,6 +305,37 @@
   const $ = s=>document.querySelector(s);
   const tb = id=>document.getElementById(id).querySelector('tbody');
   const fmt = n => (Number(n)||0).toFixed(2);
+  window.__XY_EDITING__ = false;
+  let msgTimer=null;
+  function notify(text, kind){
+    const box = $('#msg'); if(!box) return;
+    box.textContent = text || '';
+    box.className = 'msg show' + (kind? ' '+kind : '');
+    if(msgTimer) clearTimeout(msgTimer);
+    msgTimer = setTimeout(()=>{ box.className='msg'; box.textContent=''; }, 4000);
+  }
+  let lastDiagAt = 0;
+  async function renderDiag(force=false){
+    const now = Date.now();
+    if(!force && (now - lastDiagAt) < 10000) return; // 10s throttle
+    lastDiagAt = now;
+    try{
+      const d = await get('/api/diag');
+      const t = d.terminal || {};
+      const a = d.account || {};
+      const okTrade = (a.trade_allowed===true);
+      const okConn  = (t.connected===true);
+      const path = (t.path||'').split('\\').pop();
+      const df = (t.data_path||'').split('\\').slice(-2).join('\\');
+      const build = t.build||0;
+      const el = document.getElementById('diag');
+      if(el){
+        el.innerHTML = `Terminal: <b>${okConn?'Connected':'Offline'}</b> | Build ${build} | <span class="mut">${path||''}</span><br>`+
+                       `Data: <span class="mut">${df||''}</span><br>`+
+                       `Account: trade_allowed = <b>${okTrade?'YES':'NO'}</b> | ${a.server||''} (${a.login||''})`;
+      }
+    }catch(e){ /* ignore */ }
+  }
   function setBadge(el, text, cls){ el.textContent=text; el.className='badge '+cls; }
   function colorize(el, val){ el.classList.remove('up','dn'); if(val>0) el.classList.add('up'); if(val<0) el.classList.add('dn'); }
   function disControls(dis){
@@ -229,8 +365,6 @@
   let CANDLES = []; // {time, open, high, low, close}
   let LIVE_PRICE = null;
   let CURRENT_THRESHOLDS = null;
-  const AUTO_DEBOUNCE_MS = 5000;
-  const LAST_AUTO_TRADE = {buy:0, sell:0};
   function resizeCanvas(){
     const rect = cvs.getBoundingClientRect();
     const targetHeight = CHART_HEIGHT;
@@ -256,7 +390,7 @@
     if(!ctx){ return; }
     ctx.clearRect(0,0,cvs.width,cvs.height);
     if(CANDLES.length<5){ CURRENT_THRESHOLDS = null; return; }
-    const padL=38, padR=8, padT=8, padB=16;
+    const padL=38, padR=18, padT=8, padB=16;
     const w = cvs.width, h = cvs.height;
     const lows = CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
     let min = Math.min(...lows), max = Math.max(...highs);
@@ -303,7 +437,7 @@
         const yTop = yv(high);
         const yBottom = yv(low);
         ctx.fillStyle = color;
-        ctx.fillRect(x0, Math.min(yTop, yBottom), (x1-x0), Math.abs(yBottom - yTop));
+        ctx.fillRect(x0, Math.min(yTop, yBottom), (x1-x0)-15, Math.abs(yBottom - yTop));
       };
       if(zone > 0){
         fillBand('rgba(239,68,68,0.16)', resistance, Math.max(support, resistance - zone));
@@ -315,29 +449,42 @@
 
       ctx.setLineDash([4,3]);
       ctx.lineWidth=2.5; ctx.strokeStyle='#10b981';
-      ctx.beginPath(); ctx.moveTo(x0,yv(support)); ctx.lineTo(x1,yv(support)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(support)); ctx.lineTo(x1-12,yv(support)); ctx.stroke();
       ctx.strokeStyle='#ef4444';
-      ctx.beginPath(); ctx.moveTo(x0,yv(resistance)); ctx.lineTo(x1,yv(resistance)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(resistance)); ctx.lineTo(x1-12,yv(resistance)); ctx.stroke();
       ctx.setLineDash([]);
 
       ctx.strokeStyle='#111'; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.moveTo(x0, yv(topLinePrice)); ctx.lineTo(x1, yv(topLinePrice)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x0, yv(bottomLinePrice)); ctx.lineTo(x1, yv(bottomLinePrice)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yv(topLinePrice)); ctx.lineTo(x1-12, yv(topLinePrice)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yv(bottomLinePrice)); ctx.lineTo(x1-12, yv(bottomLinePrice)); ctx.stroke();
+
+      const labelOffset = 8;
+      const labelX = x1 - labelOffset;
+      const drawLabel = (value, y, color)=>{
+        const txt = fmt(value);
+        ctx.font = '18px Inter, system-ui';
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        const metrics = ctx.measureText(txt);
+        const wLabel = metrics.width + 6;
+        const xLabel = labelX - wLabel;
+        const yLabel = y - 10;
+        ctx.fillRect(xLabel, yLabel, wLabel, 16);
+        ctx.strokeStyle = '#d1d5db';
+        ctx.strokeRect(xLabel, yLabel, wLabel, 16);
+        ctx.fillStyle = color;
+        ctx.fillText(txt, xLabel + 3, yLabel + 12);
+      };
+      drawLabel(resistance, yv(resistance), '#ef4444');
+      drawLabel(support, yv(support), '#10b981');
     }else{
       CURRENT_THRESHOLDS = null;
     }
-
-    const cssWidth = lastWidth || (cvs.getBoundingClientRect().width || (cvs.width/2));
-    const ratio = cssWidth ? (cvs.width / cssWidth) : 1;
-    const blueX = Math.max(x0, (x1 - 30 * ratio));
-    ctx.strokeStyle='#1d4ed8'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(blueX, y0); ctx.lineTo(blueX, y1); ctx.stroke();
 
     if(latestPrice !== null){
       ctx.strokeStyle='#facc15';
       ctx.lineWidth=3;
       const yp = yv(latestPrice);
-      ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1, yp); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1-12, yp); ctx.stroke();
     }
 
     function line(arr, color){
@@ -352,21 +499,16 @@
   }
 
   function maybeAutoTrade(status){
-    if(!status || !status.online || status.locked || status.cooldown || !CURRENT_THRESHOLDS){ return; }
-    const price = Number(status.price || 0);
-    if(!Number.isFinite(price)){ return; }
-    const now = Date.now();
-    const lotInput = document.getElementById('lot');
-    const lotVal = Number(lotInput && lotInput.value ? lotInput.value : 0.01) || 0.01;
-    const triggerSell = price >= CURRENT_THRESHOLDS.top && (now - LAST_AUTO_TRADE.sell) > AUTO_DEBOUNCE_MS;
-    const triggerBuy  = price <= CURRENT_THRESHOLDS.bottom && (now - LAST_AUTO_TRADE.buy) > AUTO_DEBOUNCE_MS;
-    if(triggerSell){
-      LAST_AUTO_TRADE.sell = now;
-      post('/api/action/sell',{lot: lotVal}).then(()=>setTimeout(pull,400)).catch(()=>{ LAST_AUTO_TRADE.sell = 0; });
-    }else if(triggerBuy){
-      LAST_AUTO_TRADE.buy = now;
-      post('/api/action/buy',{lot: lotVal}).then(()=>setTimeout(pull,400)).catch(()=>{ LAST_AUTO_TRADE.buy = 0; });
-    }
+    const info = document.getElementById('auto60Info');
+    if(!info){ return; }
+    if(!status || !status.online){ info.textContent = 'Auto60s: offline'; return; }
+    if(status.auto60_enabled === false){ info.textContent = 'Auto60s: off'; return; }
+    const armed = status.auto60_armed ? 'armed' : 'cooldown';
+    const act = status.auto60_last_action || 'waiting';
+    const midVal = Number(status.auto60_mid);
+    const midTxt = Number.isFinite(midVal) && midVal > 0 ? fmt(midVal) : '--';
+    const idle = status.auto60_flat_since ? ` | idle ${Math.max(0, Math.floor((Date.now()/1000) - status.auto60_flat_since))}s` : '';
+    info.textContent = `Auto60s: ${armed} | ${act} | mid ${midTxt}${idle}`;
   }
 
   // ---------- UI wiring ----------
@@ -393,6 +535,8 @@
     $('#swTPSM').checked = !!s.tpsm_auto;
     $('#swTPSB').checked = !!s.tpsb_auto;
     $('#swABE').checked  = !!s.abe_auto;
+    const elSR = document.getElementById('swSR'); if(elSR) elSR.checked = !!s.sr_auto_enabled;
+    const elA60 = document.getElementById('swA60'); if(elA60) elA60.checked = !!s.auto60_enabled;
 
     $('#vsl').textContent = fmt(s.vSL||0);
     $('#peak').textContent= fmt(s.best_pl||0);
@@ -416,9 +560,15 @@
     const positions = s.open_positions||[];
     const rowHtml = positions.map((p,i)=>{
       const pl = Number(p.pl||0);
+      // Map open_exec to friendly labels
+      const ex = (p.open_exec||'').toString().toUpperCase();
+      let openBy = ex||'UNKNOWN';
+      if(openBy==='SR10') openBy='Auto SR';
+      if(openBy==='AUTO60') openBy='Auto60s';
+      if(openBy==='MANUAL') openBy='Manual';
       return `<tr><td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
         <td>${fmt(p.entry||0)}</td><td>${fmt(s.price||0)}</td>
-        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td></tr>`;
+        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${openBy}</td></tr>`;
     }).join('');
     const tbOpenMain = tb('tblOpen');
     const tblTop = document.getElementById('tblOpenTop');
@@ -437,10 +587,18 @@
     }else{
       hist.forEach((r,i)=>{
         const pl = Number(r.profit||0);
+        // Map close reason to friendly label
+        const execRaw = (r.exec||'').toString().toUpperCase();
+        let execDisp = execRaw || 'UNKNOWN';
+        if(execDisp.startsWith('SESSION')) execDisp = 'SESSION';
+        if(execDisp === 'BREAKEVEN') execDisp = 'AUTO BEP';
+        if(execDisp === 'SR10') execDisp = 'Auto SR';
+        if(execDisp === 'AUTO60') execDisp = 'Auto60s';
+        if(execDisp === 'MANUAL') execDisp = 'MANUAL';
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${i+1}</td><td>${r.symbol||''}</td><td>${r.side||''}</td>
           <td>${fmt(r.lot||0)}</td><td>${fmt(r.start||0)}</td><td>${fmt(r.close||0)}</td>
-          <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${r.time_utc||''}</td><td>${r.exec||'UNKNOWN'}</td>`;
+          <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${r.time_utc||''}</td><td>${execDisp}</td>`;
         tbH.appendChild(tr);
       });
     }
@@ -454,6 +612,39 @@
 
     const locked = !s.online || s.locked || s.cooldown;
     disControls(locked);
+    // Manual Buy/Sell hanya aktif pada mode MANUAL
+    const manualDisabled = !!s.auto_mode;
+    ['btnBuy','btnSell'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.classList.toggle('dis', locked || manualDisabled); }});
+
+    // render XY setup values (skip while typing)
+    try{ if(!window.__XY_EDITING__) renderXY(s); }catch(e){}
+  }
+
+  // Render XY table rows using values from status.click_xy
+  function renderXY(s){
+    if(window.__XY_EDITING__) return;
+    const body = document.getElementById('xyBody'); if(!body) return;
+    const arr = Array.isArray(s.click_xy)? s.click_xy : [];
+    let html = '';
+    for(let i=0;i<10;i++){
+      const v = arr[i] || {x:0,y:0};
+      html += `<tr>
+        <td style="text-align:left">Close Trade ${String(i+1).padStart(2,'0')}</td>
+        <td><input type="number" step="1" id="xyx${i}" value="${Number(v.x)||0}" style="width:90px" inputmode="numeric" autocomplete="off"></td>
+        <td><input type="number" step="1" id="xyy${i}" value="${Number(v.y)||0}" style="width:90px" inputmode="numeric" autocomplete="off"></td>
+      </tr>`;
+    }
+    body.innerHTML = html;
+    // attach edit guards
+    for(let i=0;i<10;i++){
+      const ix = document.getElementById('xyx'+i);
+      const iy = document.getElementById('xyy'+i);
+      [ix,iy].forEach(inp=>{
+        if(!inp) return;
+        inp.addEventListener('focus', ()=>{ window.__XY_EDITING__ = true; });
+        inp.addEventListener('blur', ()=>{ setTimeout(()=>{ const a=document.activeElement; if(!a || !(a.id||'').startsWith('xy')) window.__XY_EDITING__ = false; }, 150); });
+      });
+    }
   }
 
   async function pull(){
@@ -461,6 +652,7 @@
       const s = await get('/api/status');
       window.__STATUS__ = s;
       renderStatus(s);
+      renderDiag(false);
       if(s.online){ pullCandles(); } else { CANDLES = []; drawChart(); }
     }catch(e){
       setBadge($('#badgeConn'),'OFFLINE','off'); disControls(true);
@@ -481,16 +673,187 @@
   }
 
   // ---------- Actions ----------
-  $('#btnClose').onclick = ()=>post('/api/action/close',{}).then(pull);
-  $('#btnBE').onclick    = ()=>post('/api/action/breakeven',{}).then(pull);
-  $('#btnAdd').onclick   = ()=>post('/api/action/add',{lot:+$('#lot').value||0.01}).then(pull);
-  $('#btnAuto').onclick  = ()=>post('/api/strategy/toggle',{}).then(pull);
-  $('#btnBuy').onclick   = ()=>post('/api/action/buy',{lot:+$('#lot').value||0.01}).then(pull);
-  $('#btnSell').onclick  = ()=>post('/api/action/sell',{lot:+$('#lot').value||0.01}).then(pull);
+  $('#btnClose').onclick = ()=>post('/api/action/auto_click_close_all',{})
+    .then(r=>{
+      if(!r.ok){ notify('Auto Click Close All gagal: '+(r.msg || '-'), 'err'); pull(); return; }
+      notify('Auto Click Close All OK: '+(r.msg || 'completed'), 'ok');
+      pull();
+    })
+    .catch(e=>notify('Auto Click Close error: '+e,'err'));
+  $('#btnBE').onclick    = ()=>post('/api/action/breakeven',{})
+    .then(r=>{ notify(r.ok?'Auto BEP OK':'BEP gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
+    .catch(e=>notify('BEP error: '+e,'err'));
+  $('#btnAdd').onclick   = ()=>post('/api/action/add',{lot:+$('#lot').value||0.01})
+    .then(r=>{ notify(r.ok?'Add OK':'Add gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
+    .catch(e=>notify('Add error: '+e,'err'));
+  $('#btnAuto').onclick  = ()=>post('/api/strategy/toggle',{})
+    .then(()=>{ notify('Mode toggled', 'ok'); pull(); })
+    .catch(e=>notify('Toggle error: '+e,'err'));
+  $('#btnBuy').onclick   = ()=>post('/api/action/buy',{lot:+$('#lot').value||0.01})
+    .then(r=>{ notify(r.ok?'Buy OK':'Buy gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
+    .catch(e=>notify('Buy error: '+e,'err'));
+  $('#btnSell').onclick  = ()=>post('/api/action/sell',{lot:+$('#lot').value||0.01})
+    .then(r=>{ notify(r.ok?'Sell OK':'Sell gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
+    .catch(e=>notify('Sell error: '+e,'err'));
 
   $('#swTPSM').onchange = (e)=>post('/api/strategy/tpsm',{on:e.target.checked}).then(pull);
   $('#swTPSB').onchange = (e)=>post('/api/strategy/tpsb',{on:e.target.checked}).then(pull);
   $('#swABE').onchange  = (e)=>post('/api/strategy/abe',{on:e.target.checked}).then(pull);
+  const swSR = document.getElementById('swSR'); if(swSR){ swSR.onchange = (e)=>post('/api/strategy/sr',{on:e.target.checked}).then(pull); }
+  const swA60 = document.getElementById('swA60'); if(swA60){ swA60.onchange = (e)=>post('/api/strategy/auto60',{on:e.target.checked}).then(pull); }
+
+  const btnSaveXY = document.getElementById('btnSaveXY');
+  if(btnSaveXY){
+    btnSaveXY.onclick = async ()=>{
+      try{
+        const slots = [];
+        for(let i=0;i<10;i++){
+          const x = parseInt(document.getElementById('xyx'+i).value||'0',10)||0;
+          const y = parseInt(document.getElementById('xyy'+i).value||'0',10)||0;
+          slots.push({x,y});
+        }
+        const r = await post('/api/setup/xy',{slots});
+        window.__XY_EDITING__ = false;
+        notify('XY saved', 'ok');
+        setTimeout(()=>pull(), 200);
+      }catch(e){ notify('Save XY error: '+e, 'err'); }
+    };
+  }
+
+  // ---------- Mobile Navigation ----------
+  const hamburger = document.getElementById('hamburger');
+  const mobileNav = document.getElementById('mobileNav');
+  const contactTab = document.getElementById('contactTab');
+  const contactForm = document.getElementById('contactForm');
+
+  if(hamburger){
+    hamburger.onclick = ()=>{
+      mobileNav.classList.toggle('show');
+      hamburger.classList.toggle('open');
+    };
+  }
+
+  // Close mobile nav when clicking outside
+  mobileNav.onclick = (e)=>{
+    if(e.target === mobileNav){
+      mobileNav.classList.remove('show');
+      hamburger.classList.remove('open');
+    }
+  };
+
+  // ---------- Particles ----------
+  function initParticles(){
+    particlesJS('particles-js', {
+      particles: {
+        number: { value: 80, density: { enable: true, value_area: 800 } },
+        color: { value: '#2563eb' },
+        shape: { type: 'circle' },
+        opacity: { value: 0.5, random: true },
+        size: { value: 3, random: true },
+        line_linked: { enable: true, distance: 150, color: '#2563eb', opacity: 0.4, width: 1 },
+        move: { enable: true, speed: 2, direction: 'none', random: true, straight: false, out_mode: 'out' }
+      },
+      interactivity: {
+        detect_on: 'canvas',
+        events: { onhover: { enable: true, mode: 'repulse' }, onclick: { enable: true, mode: 'push' } },
+        modes: { repulse: { distance: 200, duration: 0.4 }, push: { particles_nb: 4 } }
+      },
+      retina_detect: true
+    });
+  }
+
+  // ---------- Toast Notifications ----------
+  function showToast(message, type = 'info'){
+    const container = document.getElementById('toastContainer');
+    if(!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+      <div class="icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</div>
+      <div class="message">${message}</div>
+      <div class="close" onclick="this.parentElement.remove()">×</div>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      if(toast.parentElement){
+        toast.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, 5000);
+  }
+
+  // ---------- Contact Form ----------
+  const btnSendContact = document.getElementById('btnSendContact');
+  if(btnSendContact){
+    btnSendContact.onclick = async ()=>{
+      const name = document.getElementById('contactName').value.trim();
+      const email = document.getElementById('contactEmail').value.trim();
+      const message = document.getElementById('contactMessage').value.trim();
+
+      if(!name || !email || !message){
+        showToast('Please fill in all fields', 'error');
+        return;
+      }
+
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+        showToast('Please enter a valid email address', 'error');
+        return;
+      }
+
+      try{
+        const response = await post('/api/contact', { name, email, message });
+        if(response.ok){
+          showToast('Message sent successfully!', 'success');
+          document.getElementById('contactName').value = '';
+          document.getElementById('contactEmail').value = '';
+          document.getElementById('contactMessage').value = '';
+          contactForm.classList.remove('show');
+        }else{
+          showToast('Failed to send message: ' + (response.msg || 'Unknown error'), 'error');
+        }
+      }catch(e){
+        showToast('Error sending message: ' + e.message, 'error');
+      }
+    };
+  }
+
+  // ---------- Contact Tab ----------
+  if(contactTab){
+    contactTab.onclick = ()=>{
+      // Close mobile nav
+      mobileNav.classList.remove('show');
+      hamburger.classList.remove('open');
+
+      // Show contact form
+      contactForm.classList.toggle('show');
+
+      // Scroll to contact form
+      if(contactForm.classList.contains('show')){
+        contactForm.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
+  }
+
+  // ---------- Enhanced Notify Function ----------
+  const originalNotify = notify;
+  notify = (text, kind)=>{
+    originalNotify(text, kind);
+    // Also show toast
+    const toastType = kind === 'ok' ? 'success' : kind === 'err' ? 'error' : 'info';
+    showToast(text, toastType);
+  };
+
+  // ---------- Initialize Features ----------
+  // Initialize particles when DOM is ready
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initParticles);
+  }else{
+    initParticles();
+  }
 
   // initial
   pull();
