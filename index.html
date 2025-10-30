@@ -20,6 +20,13 @@
     .warn{background:#fff7ed;color:#b45309;border-color:#fed7aa}
     .off{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
 
+    /* Desktop-only top navigation */
+    .desktop-tabs {
+        display: none; /* Hidden on mobile by default */
+        width: 100%;
+        border-bottom: 1px solid var(--line);
+    }
+
     .tabs{display:flex;border-top:1px solid var(--line)}
     .tab{flex:1;text-align:center;padding:8px 0;cursor:pointer;border-right:1px solid var(--line);background:#fafafa}
     .tab:last-child{border-right:0}
@@ -82,7 +89,8 @@
     .box h4{margin:0 0 4px 0;font-size:11px;color:var(--mut);font-weight:700}
     .big{font-size:16px;font-weight:900}
     .mut{color:var(--mut)}
-    .up{color:var(--green)} .dn{color:var(--red)}
+    .up{color:var(--green)}
+    .dn{color:var(--red)}
     .dis{opacity:.5;pointer-events:none}
 
     table{width:100%;border-collapse:collapse}
@@ -100,6 +108,7 @@
     .b-add{background:#f3e8ff;border-color:#e9d5ff;color:var(--violet)}
     .b-toggle{background:#fff7ed;border-color:#fed7aa;color:#b45309}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
     .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 
     .switch{display:inline-flex;align-items:center;gap:6px}
@@ -111,23 +120,145 @@
     .bar{height:6px;background:#f3f4f6;border-radius:6px;overflow:hidden}
     .bar>i{display:block;height:100%}
     canvas{display:block;width:100%;height:220px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .app-footer { background: var(--bg); }
+    .trade-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-top: 1px solid var(--line); }
+    .trade-bar .btn { min-width: 90px; }
     .lot-wrap{display:flex;gap:6px;align-items:center}
-    .lot{width:56px;padding:6px;border:1px solid var(--line);border-radius:8px}
+    .lot{width:60px;padding:6px;border:1px solid var(--line);border-radius:8px;text-align:center}
     .msg{margin-top:6px;padding:8px;border-radius:8px;border:1px solid var(--line);display:none}
     .msg.show{display:block}
     .msg.ok{background:#eafff2;border-color:#bbf7d0;color:#166534}
     .msg.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
     .msg.warn{background:#fff7ed;border-color:#fed7aa;color:#92400e}
+
+    /* Big Modal Notification */
+    #modalNotify {
+        display: none; /* Hidden by default */
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 20000;
+        align-items: center;
+        justify-content: center;
+        padding: 15px;
+    }
+    #modalNotifyBox {
+        background: white;
+        padding: 25px;
+        border-radius: 16px;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        animation: zoomInModal 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        width: 90vw; /* 90% of viewport width on mobile */
+        max-width: 400px;
+        min-height: 30vh; /* 30% of viewport height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #modalNotifyText { margin: 0; font-size: 16px; font-weight: 700; color: var(--blue); line-height: 1.5; }
+    @keyframes zoomInModal { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .symbol-tag { display: inline-flex; align-items: center; background: #eef2ff; color: var(--blue); padding: 4px 8px; border-radius: 6px; font-weight: 700; }
+    .symbol-tag-delete { margin-left: 8px; cursor: pointer; font-weight: bold; color: #9ca3af; }
+    .symbol-tag-delete:hover { color: var(--red); }
+    .tf-btn {
+        font-size: 10px;
+        background: rgba(249, 250, 251, 0.8);
+        padding: 2px 5px;
+        border-radius: 6px;
+        color: var(--mut);
+        font-weight: 700;
+        border: 1px solid var(--line);
+        cursor: pointer;
+    }
+    .tf-btn.active {
+        background: var(--blue);
+        color: white;
+        border-color: var(--blue);
+    }
+    .zoom-btn {
+        width: 22px; height: 22px; border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 6px; font-weight: bold; cursor: pointer;
+        padding: 0; line-height: 20px;
+        text-align: center;
+    }
+  </style>
+  <style>
+    /* --- Responsive Styles for Tablet & Desktop --- */
+    @media (min-width: 768px) {
+      .wrap {
+        max-width: 1280px;
+      }
+      /* Hide mobile-specific elements */
+      .hamburger, .mobile-nav, .app-footer {
+        display: none !important;
+      }
+
+      /* Show and style desktop navigation */
+      .desktop-tabs {
+        display: flex;
+      }
+      .desktop-tabs .tab {
+        flex: 0 1 auto; /* Don't grow, just take space needed */
+        padding: 12px 16px;
+        border-right: none;
+        border-bottom: 3px solid transparent;
+        background: transparent;
+      }
+      .desktop-tabs .tab.active {
+        border-bottom-color: var(--blue);
+        font-weight: 700;
+        background: transparent;
+      }
+
+      /* Show desktop trade bar */
+      .desktop-trade-bar-container {
+        display: block;
+      }
+
+      /* Create a two-column layout for the Setup page */
+      #p-quote > .box {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        border: none; padding: 0;
+      }
+      .setup-col-1, .setup-col-2 {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+      }
+    }
+
+    /* --- Mobile-only styles --- */
+    @media (max-width: 767px) {
+      /* Hide desktop-only elements on mobile */
+      .desktop-tabs, .desktop-trade-bar-container {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
   <!-- HEADER -->
   <header>
-    <h1>INDODAM</h1>
+    <h1>Indodam THT</h1>
     <span id="badgeConn" class="badge off">OFFLINE</span>
     <span id="badgeMode" class="badge warn">MANUAL</span>
     <span id="badgeTrend" class="badge">SIDE</span>
+    <!-- Desktop Navigation (hidden on mobile) -->
+    <nav class="desktop-tabs">
+      <div class="tab" data-tab="quote">Setup</div>
+      <div class="tab active" data-tab="chart">Control</div>
+      <div class="tab" data-tab="trade">Trade</div>
+      <div class="tab" data-tab="hist">Riwayat</div>
+    </nav>
     <div class="hamburger" id="hamburger">
       <span></span><span></span><span></span>
     </div>
@@ -138,7 +269,7 @@
     <div class="mobile-menu">
       <h3>Menu</h3>
       <div class="tab" data-tab="quote">Setup</div>
-      <div class="tab active" data-tab="chart">Chart</div>
+      <div class="tab active" data-tab="chart">Control</div>
       <div class="tab" data-tab="trade">Trade</div>
       <div class="tab" data-tab="hist">Riwayat</div>
       <div class="tab" id="contactTab">Contact</div>
@@ -151,10 +282,25 @@
   <section id="p-chart" class="panel active">
       <div class="box">
         <div class="row">
-          <div><span class="mut">Symbol</span> <b id="sym">XAUUSDc</b></div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="mut" style="font-weight: 800;">Symbol</span>
+            <select id="symSelect" style="padding: 4px; border: 1px solid var(--line); border-radius: 6px; width: 120px;"></select>
+            <button id="btnSetSymbol" class="btn" style="padding: 4px 8px; font-size: 11px;">Set</button>
+            <span id="symbolSetCheck" style="color: var(--green); font-weight: bold; display: none;">✓</span>
+          </div>
           <div class="big" id="price">-</div>
         </div>
-        <canvas id="chart"></canvas>
+        <div style="position: relative;">
+          <canvas id="chart"></canvas>
+          <div id="chartTfSelector" style="position: absolute; top: 8px; left: 8px; display: flex; gap: 4px;">
+            <span class="tf-btn active" data-tf="M5">M5 Chart</span>
+            <span class="tf-btn" data-tf="M1">M1 Chart</span>
+          </div>
+          <div id="chartZoomControls" style="position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px;">
+            <button class="zoom-btn" id="zoomOut">-</button>
+            <button class="zoom-btn" id="zoomIn">+</button>
+          </div>
+        </div>
         <div class="row" style="margin-top:6px">
           <div>Equity: <b id="equity">-</b> <span class="mut">| Free:</span> <b id="free">-</b></div>
           <div>Daily P/L: <b id="dailyPL">0.00</b></div>
@@ -165,27 +311,30 @@
             <div>Total Lot: <b id="totalLotTop">0.00</b> (<span id="openCountTop">0</span>)</div>
             <div>Floating: <b id="floatPLTop">0.00</b></div>
           </div>
-          <div style="margin-top:6px;max-height:140px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+          <div style="margin-top:6px;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:8px">
             <table id="tblOpenTop">
-              <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th><th>Open By</th></tr></thead>
+              <thead><tr><th>Aksi</th><th>#</th><th>Side</th><th>Lot</th><th>P/L</th><th>Live %</th><th>TPSM/TPSB</th><th>Status</th><th>Entry</th><th>Now</th><th>Open By</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
           <div class="row" style="margin-top:6px">
             <div class="mut">Cooldown:</div><b id="coolTop">Ready</b>
+            <div class="mut" style="margin-left: auto;">Status Aksi:</div><b id="pendingOpenStatusTop" style="color: var(--blue);">-</b>
+            <div class="mut" style="margin-left: auto;">Baris Trade:</div><b id="tradeRowsTop">0</b>
           </div>
-          <p class="hint" id="auto60Info" style="margin-top:4px">Auto60s: waiting…</p>
         </div>
         <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
           <label class="switch"><input id="swTPSM" type="checkbox"><span>Auto TPSM</span></label>
-          <label class="switch"><input id="swTPSB" type="checkbox"><span>Auto TPSB</span></label>
+          <label class="switch"><input id="swAutoTPSB" type="checkbox"><span>Auto TPSB</span></label>
           <label class="switch"><input id="swABE"  type="checkbox"><span>Auto BEP</span></label>
-          <label class="switch"><input id="swSR"   type="checkbox"><span>Auto SR</span></label>
-          <label class="switch"><input id="swA60"  type="checkbox"><span>Auto 60s</span></label>
+          <label class="switch"><input id="swRSBuy"   type="checkbox"><span>Auto RS Buy</span></label>
+          <label class="switch"><input id="swRSSell"  type="checkbox"><span>Auto RS Sell</span></label>
+          <label class="switch"><input id="swM53Buy"  type="checkbox"><span>Auto 53 Buy</span></label>
+          <label class="switch"><input id="swM53Sell" type="checkbox"><span>Auto 53 Sell</span></label>
+          <label class="switch"><input id="swTS" type="checkbox"><span>Trailing Stop</span></label>
         </div>
-        <div class="grid2" style="margin-top:6px">
+        <div class="grid3" style="margin-top:6px">
           <button class="btn b-close" id="btnClose">Close All</button>
-          <button class="btn b-be" id="btnBE">Auto BEP</button>
           <button class="btn b-add" id="btnAdd">+ Add</button>
           <button class="btn b-toggle" id="btnAuto">Auto/Manual</button>
         </div>
@@ -196,48 +345,149 @@
         <div class="box"><h4>Timer</h4><b id="timer">00:00</b></div>
         <div class="box"><h4>Adds</h4><b id="adds">0</b></div>
       </div>
-      <div class="grid2" style="margin-top:6px">
-        <div class="lot-wrap">
-          <span class="mut">Lot</span><input id="lot" class="lot" type="number" step="0.01" min="0.01" value="0.01">
-        </div>
-        <div class="row" style="gap:6px;justify-content:flex-end">
-          <button class="btn b-buy" id="btnBuy">BUY</button>
-          <button class="btn b-sell" id="btnSell">SELL</button>
-        </div>
-      </div>
       <div id="msg" class="msg" role="status" aria-live="polite"></div>
       <div id="diag" class="hint" style="margin-top:6px;line-height:1.4"></div>
       <p class="hint" style="margin-top:4px">Eksekusi mengikuti kompas tren & TPS; tombol disable saat offline/locked.</p>
     </section>
 
+    <!-- Desktop Trade Bar Container (hidden on mobile) -->
+    <div class="desktop-trade-bar-container">
+      <div class="trade-bar box" style="margin-top: 8px; padding: 12px;">
+        <button class="btn b-sell" id="btnSellDesktop">SELL</button>
+        <div class="lot-wrap">
+          <span class="mut">Lot</span>
+          <input id="lotDesktop" class="lot" type="number" step="0.01" min="0.01" value="0.01">
+        </div>
+        <button class="btn b-buy" id="btnBuyDesktop">BUY</button>
+      </div>
+    </div>
+
     <!-- SETUP -->
     <section id="p-quote" class="panel">
       <div class="box">
-        <h4>Setup XY Close Trade</h4>
-        <div class="hint" style="margin-bottom:6px">
-          1) Install MouseInfo: jalankan perintah di CMD/PowerShell:<br>
-          <code>pip install mouseinfo pyautogui</code> &nbsp; lalu: &nbsp; <code>python -m mouseinfo</code><br>
-          2) Arahkan kursor di tombol "x" baris teratas trade MT5, salin Screen X/Y ke kolom di bawah. Klik Save.
-        </div>
-        <div style="border:1px solid var(--line);border-radius:8px;padding:8px;max-height:340px;overflow:auto">
-          <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left">Slot</th><th>X</th><th>Y</th></tr></thead>
-            <tbody id="xyBody"></tbody>
-          </table>
-          <div class="row" style="margin-top:8px;gap:8px">
-            <button class="btn b-be" id="btnSaveXY">Save</button>
-            <span class="hint">Menyimpan ke server (persist setup.json).</span>
+        <div class="setup-col-1">
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <h4>Setup Kordinat XY</h4>
+            <button id="btnAddNewXY" class="btn" style="padding: 4px 8px; font-size: 11px;">+ Data Kordinat Baru</button>
+          </div>
+          <div id="formAddNewXY" style="display:none; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0;">
+            <h4 style="margin-bottom: 8px;">Tambah Data Kordinat</h4>
+            <input type="text" id="newXYTitle" placeholder="Judul Slot" style="width:100%; margin-bottom: 6px;">
+            <select id="newXYFunc" style="width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px;">
+              <option value="close_row">Close Baris</option>
+              <option value="instant_buy">Instant Buy</option>
+              <option value="instant_sell">Instant Sell</option>
+              <option value="auto_tpsb">Auto TPSB</option>
+              <option value="auto_tpsm">Auto TPSM</option>
+              <option value="auto_bep">Auto BEP</option>
+              <option value="auto_sr_buy">Auto SR Buy</option>
+              <option value="auto_sr_sell">Auto SR Sell</option>
+              <option value="auto_m53_buy">Auto M53 Buy</option>
+              <option value="auto_m53_sell">Auto M53 Sell</option>
+              <option value="auto_close_all">Auto Close All</option>
+            </select>
+            <div class="grid2" style="margin-top: 6px;">
+              <input type="number" step="0.001" id="newXYTargetNeg" placeholder="Target % -">
+              <input type="number" step="0.001" id="newXYTargetPos" placeholder="Target % +">
+            </div>
+            <div class="grid2">
+              <input type="number" id="newXYX" placeholder="Sumbu X">
+              <input type="number" id="newXYY" placeholder="Sumbu Y">
+            </div>
+            <button id="btnSaveNewXY" class="btn b-be" style="margin-top: 8px;">Tambahkan ke List</button>
+          </div>
+          <div class="hint" style="margin-bottom:6px">
+            1) Install MouseInfo: jalankan perintah di CMD/PowerShell:<br>
+            <code>pip install mouseinfo pyautogui</code> &nbsp; lalu: &nbsp; <code>python -m mouseinfo</code><br>
+            2) Arahkan kursor di tombol "x" baris teratas trade MT5, salin Screen X/Y ke kolom di bawah. Klik Save.
+          </div>
+          <div style="border:1px solid var(--line);border-radius:8px;padding:8px;max-height:1500px;overflow:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr><th style="text-align:right;">No</th><th style="text-align:left">Slot</th><th>Target % -</th><th>Target % +</th><th>Fungsi</th><th>X</th><th>Y</th><th>Aksi</th></tr></thead>
+              <tbody id="xyBody"></tbody>
+            </table>
+            <div class="row" style="margin-top:8px;gap:8px">
+              <button class="btn b-be" id="btnSaveXY">Save</button>
+              <span class="hint">Menyimpan ke server (persist setup.json).</span>
+            </div>
           </div>
         </div>
-        <hr style="margin:10px 0;border:none;border-top:1px solid var(--line)">
-        <h4>Quote</h4>
-        <div style="border:1px solid var(--line);border-radius:8px;max-height:200px;overflow:auto">
-          <table id="tblQuote">
-            <thead><tr><th>Symbol</th><th>Bid</th><th>Ask</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <div class="setup-col-2">
+          <h4>Manage Symbols</h4>
+            <div id="symbolList" class="box" style="padding: 4px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 34px;">
+                <!-- Symbol tags will be rendered here -->
+            </div>
+            <div class="row">
+                <input id="newSymbolInput" placeholder="e.g., EURUSD" style="flex-grow:1; padding: 6px; border-radius: 6px; border: 1px solid var(--line);">
+                <button id="btnAddSymbol" class="btn" style="padding: 4px 8px;">Add</button>
+            </div>
+            <button id="btnSaveSymbols" class="btn b-be" style="width: 100%;">Save Symbol List</button>
+            <hr style="margin:12px 0; border:none; border-top: 1px solid var(--line);">
+            <h4>Pengaturan Auto SR</h4>
+            <div class="box">
+                <div class="row">
+                    <label for="srCandleLookback" class="mut">Patokan Candle (M1)</label>
+                    <input id="srCandleLookback" type="number" step="1" min="5" class="lot" style="width: 80px;">
+                </div>
+                <div class="row" style="margin-top: 6px;">
+                    <label for="srNearPct" class="mut">Jarak Trigger (%)</label>
+                    <input id="srNearPct" type="number" step="0.01" min="0.0" class="lot" style="width: 80px;">
+                </div>
+                <button id="btnSaveSRSettings" class="btn b-be" style="width: 100%; margin-top: 8px;">Save SR Settings</button>
+            </div>
+            <h4>Pengaturan Trailing Stop</h4>
+            <div class="box">
+                <div class="row">
+                    <label for="tsValueInput" class="mut">Jarak Trailing (<span id="tsCurrency" class="mut"></span>)</label>
+                    <input id="tsValueInput" type="number" step="1" min="0" class="lot" style="width: 80px;" autocomplete="off">
+                </div>
+                <button id="btnSaveTS" class="btn b-be" style="width: 100%; margin-top: 8px;">Save Trailing Stop</button>
+            </div>
+            <hr style="margin:12px 0; border:none; border-top: 1px solid var(--line);">
+          <h4 style="margin-top:0;">Quote</h4>
+          <div style="border:1px solid var(--line);border-radius:8px;max-height:200px;overflow:auto">
+            <table id="tblQuote">
+              <thead><tr><th>Symbol</th><th>Bid</th><th>Ask</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="hint">Ketuk simbol untuk memilih (real list dari MT5).</div>
         </div>
-        <div class="hint">Ketuk simbol untuk memilih (real list dari MT5).</div>
+        <hr style="margin:12px 0; border:none; border-top: 1px solid var(--line);">
+        <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px;">
+            <div class="row" style="justify-content: space-between; align-items: center;">
+                <h4>Manajemen Akun MT5</h4>
+            </div>
+            <div style="border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0;">
+                <h4 style="margin-bottom: 8px;">Tambah/Edit Akun</h4>
+                <div class="grid2">
+                    <input type="text" id="accAlias" placeholder="Nama Alias Akun">
+                    <input type="number" id="accLogin" placeholder="ID Akun">
+                </div>
+                <div class="grid2">
+                    <input type="password" id="accPassword" placeholder="Password">
+                    <input type="text" id="accServer" placeholder="Nama Server">
+                </div>
+                <button id="btnAddAccount" class="btn b-be" style="margin-top: 8px;">Tambahkan ke List</button>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:8px;padding:8px;max-height:380px;overflow:auto">
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr>
+                            <th>Pilih</th>
+                            <th style="text-align:left">Alias</th>
+                            <th>Login</th>
+                            <th>Server</th>
+                            <th style="text-align:center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsBody"></tbody>
+                </table>
+            </div>
+            <div class="row" style="margin-top:8px;gap:8px">
+                <button class="btn b-be" id="btnSaveAccounts">Save Semua Akun</button>
+            </div>
+        </div>
       </div>
     </section>
 
@@ -248,14 +498,16 @@
           <div>Total Lot: <b id="totalLot">0.00</b> (<span id="openCount">0</span>)</div>
           <div>Floating: <b id="floatPL">0.00</b></div>
         </div>
-        <div style="margin-top:6px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+        <div style="margin-top:6px;border:1px solid var(--line);border-radius:8px">
           <table id="tblOpen">
-            <thead><tr><th>#</th><th>Side</th><th>Lot</th><th>Entry</th><th>Now</th><th>P/L</th><th>Open By</th></tr></thead>
+            <thead><tr><th>Aksi</th><th>#</th><th>Side</th><th>Lot</th><th>P/L</th><th>Live %</th><th>TPSM/TPSB</th><th>Status</th><th>Entry</th><th>Now</th><th>Open By</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
         <div class="row" style="margin-top:6px">
           <div class="mut">Cooldown:</div><b id="cool">Ready</b>
+          <div class="mut" style="margin-left: auto;">Status Aksi:</div><b id="pendingOpenStatus" style="color: var(--blue);">-</b>
+          <div class="mut" style="margin-left: auto;">Baris Trade:</div><b id="tradeRows">0</b>
         </div>
       </div>
     </section>
@@ -263,8 +515,11 @@
     <!-- RIWAYAT -->
     <section id="p-hist" class="panel">
       <div class="box">
-        <h4>History Hari Ini</h4>
-        <div style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+        <div class="row">
+          <h4 style="margin:0;">History Hari Ini</h4>
+          <div>Total Daily P/L: <b id="dailyPLHist">0.00</b></div>
+        </div>
+        <div style="margin-top:6px;border:1px solid var(--line);border-radius:8px">
           <table id="tblHist">
             <thead><tr>
               <th>#</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Start</th><th>Close</th><th>Profit</th><th>UTC</th><th>Close By</th>
@@ -276,13 +531,30 @@
     </section>
   </div>
 
-  <!-- TABS -->
-  <nav class="tabs">
-    <div class="tab" data-tab="quote">Setup</div>
-    <div class="tab active" data-tab="chart">Chart</div>
-    <div class="tab" data-tab="trade">Trade</div>
-    <div class="tab" data-tab="hist">Riwayat</div>
-  </nav>
+  <!-- APP FOOTER -->
+  <footer class="app-footer">
+    <div class="trade-bar">
+      <button class="btn b-sell" id="btnSell">SELL</button>
+      <div class="lot-wrap">
+        <span class="mut">Lot</span>
+        <input id="lot" class="lot" type="number" step="0.01" min="0.01" value="0.01">
+      </div>
+      <button class="btn b-buy" id="btnBuy">BUY</button>
+    </div>
+    <nav class="tabs">
+      <div class="tab" data-tab="quote">Setup</div>
+      <div class="tab active" data-tab="chart">Control</div>
+      <div class="tab" data-tab="trade">Trade</div>
+      <div class="tab" data-tab="hist">Riwayat</div>
+    </nav>
+  </footer>
+
+  <!-- BIG MODAL NOTIFICATION -->
+  <div id="modalNotify">
+    <div id="modalNotifyBox">
+      <h3 id="modalNotifyText"></h3>
+    </div>
+  </div>
 
   <!-- PARTICLES -->
   <div id="particles-js"></div>
@@ -306,6 +578,13 @@
   const tb = id=>document.getElementById(id).querySelector('tbody');
   const fmt = n => (Number(n)||0).toFixed(2);
   window.__XY_EDITING__ = false;
+  window.__SYM_SELECT_ACTIVE__ = false;
+  window.__ACCOUNT_EDITING__ = false;
+  window.__SYMBOL_EDITING__ = false;
+  window.__SR_SETTINGS_EDITING__ = false;
+  window.__TS_SETTINGS_EDITING__ = false;
+  let currentChartTf = 'M5';
+  let candleCount = 120;
   let msgTimer=null;
   function notify(text, kind){
     const box = $('#msg'); if(!box) return;
@@ -313,6 +592,19 @@
     box.className = 'msg show' + (kind? ' '+kind : '');
     if(msgTimer) clearTimeout(msgTimer);
     msgTimer = setTimeout(()=>{ box.className='msg'; box.textContent=''; }, 4000);
+  }
+  function showModalNotify(text) {
+    const modal = document.getElementById('modalNotify');
+    const modalText = document.getElementById('modalNotifyText');
+    if (!modal || !modalText) return;
+
+    modalText.textContent = text;
+    modal.style.display = 'flex';
+
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 3000);
   }
   let lastDiagAt = 0;
   async function renderDiag(force=false){
@@ -345,12 +637,16 @@
   }
   // ---------- Tabs ----------
   document.querySelectorAll('.tab').forEach(t=>{
-    t.onclick=()=>{
-      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.onclick = () => {
+      const tabName = t.dataset.tab;
+      // De-activate all tabs (both mobile and desktop)
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      // Activate all tabs with the same data-tab
+      document.querySelectorAll(`.tab[data-tab="${tabName}"]`).forEach(x => x.classList.add('active'));
+
       document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-      t.classList.add('active');
-      document.getElementById('p-'+t.dataset.tab).classList.add('active');
-    };
+      document.getElementById('p-' + tabName).classList.add('active');
+    }
   });
 
   // ---------- API ----------
@@ -365,7 +661,7 @@
   let CANDLES = []; // {time, open, high, low, close}
   let LIVE_PRICE = null;
   let CURRENT_THRESHOLDS = null;
-  function resizeCanvas(){
+  function resizeCanvas() {
     const rect = cvs.getBoundingClientRect();
     const targetHeight = CHART_HEIGHT;
     if (lastWidth !== rect.width || cvs.height !== targetHeight*2){
@@ -389,8 +685,8 @@
   function drawChart(){
     if(!ctx){ return; }
     ctx.clearRect(0,0,cvs.width,cvs.height);
-    if(CANDLES.length<5){ CURRENT_THRESHOLDS = null; return; }
-    const padL=38, padR=18, padT=8, padB=16;
+    if (CANDLES.length < 5) { CURRENT_THRESHOLDS = null; return; }
+    const padL=38, padR=80, padT=8, padB=16;
     const w = cvs.width, h = cvs.height;
     const lows = CANDLES.map(d=>d.low), highs=CANDLES.map(d=>d.high);
     let min = Math.min(...lows), max = Math.max(...highs);
@@ -402,17 +698,34 @@
     const x0 = padL, x1 = w-padR, y0 = padT, y1 = h-padB;
     const n = CANDLES.length;
     const cw = (x1-x0)/n;
+    const yv = v => y1 - (v-min)/(max-min+1e-9)*(y1-y0);
+
+    // --- Helper function for drawing labels, moved to a higher scope ---
+    const drawLabel = (value, y, color) => {
+      const txt = fmt(value);
+      ctx.font = 'bold 24px Inter, system-ui';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      const metrics = ctx.measureText(txt);
+      const wLabel = metrics.width + 10;
+      const hLabel = 28;
+      const labelX = x0 - padL + 4; // Position at the far left
+      const yLabel = y - (hLabel / 2);
+      ctx.fillRect(labelX, yLabel, wLabel, hLabel);
+      ctx.strokeStyle = '#d1d5db';
+      ctx.strokeRect(labelX, yLabel, wLabel, hLabel);
+      ctx.fillStyle = color;
+      ctx.fillText(txt, labelX + 5, yLabel + 22);
+    };
 
     // grid
     ctx.strokeStyle='#eee'; ctx.lineWidth=1;
-    for(let i=0;i<4;i++){ const y=y0 + (y1-y0)*i/3; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
+    for(let i=0; i<4; i++){ const y=y0 + (y1-y0)*i/3; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
 
     const closes=CANDLES.map(d=>d.close);
     const ema9 = ema(closes,9), ma20=sma(closes,20), ema50=ema(closes,50);
-    const yv = v => y1 - (v-min)/(max-min+1e-9)*(y1-y0);
 
     // candles
-    for(let i=0;i<n;i++){
+    for(let i=0; i<n; i++){
       const d=CANDLES[i], x = x0 + i*cw + cw*0.5;
       ctx.strokeStyle='#999'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x, yv(d.high)); ctx.lineTo(x, yv(d.low)); ctx.stroke();
       const up = d.close>=d.open;
@@ -422,22 +735,25 @@
       ctx.fillRect(x-cw*0.28, Math.min(yOpen,yClose), cw*0.56, bh);
     }
 
-    const win = CANDLES.slice(-15);
+    const lookback = window.__STATUS__?.sr_settings?.candle_lookback || 15;
+    const win = CANDLES.slice(-lookback);
     if(win.length){
       const support = Math.min(...win.map(d=>d.low));
       const resistance = Math.max(...win.map(d=>d.high));
       const range = Math.max(1e-6, resistance - support);
       const mid = support + range/2;
       const zone = range * 0.05;
-      const topLinePrice = resistance - range * 0.10;
-      const bottomLinePrice = support + range * 0.10;
+      const near_pct_val = window.__STATUS__?.sr_settings?.near_pct || 10.0;
+      const trigger_pct = near_pct_val / 100.0;
+      const topLinePrice = resistance - range * trigger_pct;
+      const bottomLinePrice = support + range * trigger_pct;
       CURRENT_THRESHOLDS = {top: topLinePrice, bottom: bottomLinePrice, resistance, support, mid};
 
       const fillBand = (color, high, low)=>{
         const yTop = yv(high);
         const yBottom = yv(low);
         ctx.fillStyle = color;
-        ctx.fillRect(x0, Math.min(yTop, yBottom), (x1-x0)-15, Math.abs(yBottom - yTop));
+        ctx.fillRect(x0, Math.min(yTop, yBottom), (x1-x0), Math.abs(yBottom - yTop));
       };
       if(zone > 0){
         fillBand('rgba(239,68,68,0.16)', resistance, Math.max(support, resistance - zone));
@@ -449,31 +765,16 @@
 
       ctx.setLineDash([4,3]);
       ctx.lineWidth=2.5; ctx.strokeStyle='#10b981';
-      ctx.beginPath(); ctx.moveTo(x0,yv(support)); ctx.lineTo(x1-12,yv(support)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(support)); ctx.lineTo(x1,yv(support)); ctx.stroke();
       ctx.strokeStyle='#ef4444';
-      ctx.beginPath(); ctx.moveTo(x0,yv(resistance)); ctx.lineTo(x1-12,yv(resistance)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,yv(resistance)); ctx.lineTo(x1,yv(resistance)); ctx.stroke();
       ctx.setLineDash([]);
 
       ctx.strokeStyle='#111'; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.moveTo(x0, yv(topLinePrice)); ctx.lineTo(x1-12, yv(topLinePrice)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x0, yv(bottomLinePrice)); ctx.lineTo(x1-12, yv(bottomLinePrice)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yv(topLinePrice)); ctx.lineTo(x1, yv(topLinePrice)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yv(bottomLinePrice)); ctx.lineTo(x1, yv(bottomLinePrice)); ctx.stroke();
 
-      const labelOffset = 8;
-      const labelX = x1 - labelOffset;
-      const drawLabel = (value, y, color)=>{
-        const txt = fmt(value);
-        ctx.font = '18px Inter, system-ui';
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        const metrics = ctx.measureText(txt);
-        const wLabel = metrics.width + 6;
-        const xLabel = labelX - wLabel;
-        const yLabel = y - 10;
-        ctx.fillRect(xLabel, yLabel, wLabel, 16);
-        ctx.strokeStyle = '#d1d5db';
-        ctx.strokeRect(xLabel, yLabel, wLabel, 16);
-        ctx.fillStyle = color;
-        ctx.fillText(txt, xLabel + 3, yLabel + 12);
-      };
+      // Draw S/R labels
       drawLabel(resistance, yv(resistance), '#ef4444');
       drawLabel(support, yv(support), '#10b981');
     }else{
@@ -481,63 +782,106 @@
     }
 
     if(latestPrice !== null){
-      ctx.strokeStyle='#facc15';
-      ctx.lineWidth=3;
       const yp = yv(latestPrice);
-      ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1-12, yp); ctx.stroke();
+      
+      // Draw the static blue line for the live price
+      ctx.strokeStyle='#2563eb'; // Warna biru
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(x0, yp); ctx.lineTo(x1, yp); ctx.stroke();
+
+      // Draw the live price label on the left side
+      drawLabel(latestPrice, yp, '#2563eb');
     }
 
     function line(arr, color){
       ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
-      for(let i=0;i<n;i++){
+      for(let i=0; i<n; i++){
         const x = x0 + i*cw + cw*0.5, y=yv(arr[i]);
         if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
       ctx.stroke();
     }
-    line(ema9,'#16a34a'); line(ma20,'#2563eb'); line(ema50,'#7c3aed');
-  }
-
-  function maybeAutoTrade(status){
-    const info = document.getElementById('auto60Info');
-    if(!info){ return; }
-    if(!status || !status.online){ info.textContent = 'Auto60s: offline'; return; }
-    if(status.auto60_enabled === false){ info.textContent = 'Auto60s: off'; return; }
-    const armed = status.auto60_armed ? 'armed' : 'cooldown';
-    const act = status.auto60_last_action || 'waiting';
-    const midVal = Number(status.auto60_mid);
-    const midTxt = Number.isFinite(midVal) && midVal > 0 ? fmt(midVal) : '--';
-    const idle = status.auto60_flat_since ? ` | idle ${Math.max(0, Math.floor((Date.now()/1000) - status.auto60_flat_since))}s` : '';
-    info.textContent = `Auto60s: ${armed} | ${act} | mid ${midTxt}${idle}`;
+    line(ema9,'#16a34a'); line(ma20,'#2563eb'); line(ema50,'#dc2626');
   }
 
   // ---------- UI wiring ----------
   function renderStatus(s){
+    // Check for and display system messages from the backend
+    if (s.last_system_message && s.last_system_message.text) {
+        const msgText = s.last_system_message.text;
+        const msgType = s.last_system_message.type || 'info';
+        const isClickerAction = msgText.includes('Auto TPSB') || msgText.includes('Auto TPSM') || msgText.includes('Auto RS BUY') || msgText.includes('Auto RS SELL');
+
+        // On mobile, for clicker actions, show the big modal.
+        if (isClickerAction && window.innerWidth < 768) {
+            showModalNotify(msgText);
+        } 
+        // For all other cases (desktop, or non-clicker messages on mobile), use the toast.
+        else {
+            const toastType = msgType === 'ok' ? 'success' : msgType === 'err' ? 'error' : 'info';
+            showToast(msgText, toastType);
+        }
+    }
+
     setBadge($('#badgeConn'), s.online? 'ONLINE':'OFFLINE', s.online?'ok':'off');
     setBadge($('#badgeMode'), s.auto_mode? 'AUTO':'MANUAL', s.auto_mode?'warn':'');
     setBadge($('#badgeTrend'), s.mode||'SIDE','');
 
-    $('#sym').textContent = s.symbol || 'XAUUSDc';
+    const symSelect = document.getElementById('symSelect');
+    if (symSelect) {
+        const currentOptions = Array.from(symSelect.options).map(o => o.value);
+        // Gunakan s.symbols sebagai sumber data utama untuk daftar simbol.
+        const configSymbols = s.symbols || [];
+        const symbolSet = new Set(configSymbols);
+        if (s.symbol) {
+            // Pastikan simbol yang sedang aktif selalu ada di dalam daftar.
+            symbolSet.add(s.symbol);
+        }
+        const newOptions = Array.from(symbolSet).sort(); // Sort for consistent order
+
+        if (JSON.stringify(currentOptions) !== JSON.stringify(newOptions)) {
+            symSelect.innerHTML = '';
+            newOptions.forEach(symbol => {
+                const option = document.createElement('option');
+                option.value = symbol; option.textContent = symbol;
+                symSelect.appendChild(option);
+            });
+        }
+        if (!window.__SYM_SELECT_ACTIVE__) {
+            symSelect.value = s.symbol;
+        }
+    }
     $('#price').textContent = fmt(s.price||0);
     colorize($('#price'), (s.tick_dir||0));
     const livePrice = Number(s.price);
-    LIVE_PRICE = (s.online && Number.isFinite(livePrice)) ? livePrice : null;
-    drawChart();
-    maybeAutoTrade(s);
+    LIVE_PRICE = (s.online && Number.isFinite(livePrice)) ? livePrice : null;    drawChart();
     $('#equity').textContent = fmt(s.equity||0);
     $('#free').textContent   = fmt(s.free_margin||0);
     $('#dailyPL').textContent= fmt(s.daily_pl||0);
     colorize($('#dailyPL'), s.daily_pl||0);
+    const dailyPLHistEl = document.getElementById('dailyPLHist');
+    if(dailyPLHistEl){
+      dailyPLHistEl.textContent = fmt(s.daily_pl||0);
+      colorize(dailyPLHistEl, s.daily_pl||0);
+    }
     const tg = Math.max(0.0001, (s.daily_target||10) - (s.daily_min||-10));
     const prog = Math.min(100, Math.max(0, ((s.daily_pl||0) - (s.daily_min||-10)) / tg * 100));
     $('#progress').style.width = prog + '%';
 
-    $('#swTPSM').checked = !!s.tpsm_auto;
-    $('#swTPSB').checked = !!s.tpsb_auto;
+    const tpsmOn = !!s.tpsm_auto;
+    const tpsbOn = !!s.auto_tpsb_enabled;
+    // Reflect the backend state directly
+    $('#swTPSM').checked = tpsmOn;
     $('#swABE').checked  = !!s.abe_auto;
-    const elSR = document.getElementById('swSR'); if(elSR) elSR.checked = !!s.sr_auto_enabled;
-    const elA60 = document.getElementById('swA60'); if(elA60) elA60.checked = !!s.auto60_enabled;
+    const elAutoTPSB = document.getElementById('swAutoTPSB');
+    if(elAutoTPSB) elAutoTPSB.checked = tpsbOn;
 
+    const elRSBuy = document.getElementById('swRSBuy'); if(elRSBuy) elRSBuy.checked = !!s.sr_buy_enabled;
+    const elRSSell = document.getElementById('swRSSell'); if(elRSSell) elRSSell.checked = !!s.sr_sell_enabled;
+    const elM53Buy = document.getElementById('swM53Buy'); if(elM53Buy) elM53Buy.checked = !!s.m53_buy_enabled;
+    const elM53Sell = document.getElementById('swM53Sell'); if(elM53Sell) elM53Sell.checked = !!s.m53_sell_enabled;
+    const elTS = document.getElementById('swTS'); if(elTS) elTS.checked = !!s.trailing_stop_enabled;
+    
     $('#vsl').textContent = fmt(s.vSL||0);
     $('#peak').textContent= fmt(s.best_pl||0);
     $('#timer').textContent= s.timer||'00:00';
@@ -552,28 +896,71 @@
     const floatFmt = fmt(s.float_pl||0);
     $('#floatPL').textContent = floatFmt;
     colorize($('#floatPL'), s.float_pl||0);
+    const tradeRowsEl = document.getElementById('tradeRows'); if(tradeRowsEl) tradeRowsEl.textContent = openCountVal;
+    const tradeRowsTopEl = document.getElementById('tradeRowsTop'); if(tradeRowsTopEl) tradeRowsTopEl.textContent = openCountVal;
+
     const floatTopEl = document.getElementById('floatPLTop'); if(floatTopEl){ floatTopEl.textContent = floatFmt; colorize(floatTopEl, s.float_pl||0); }
     const coolText = s.cooldown? ('Cooling '+(s.cooldown_remain||'')):'Ready';
     $('#cool').textContent = coolText;
     const coolTopEl = document.getElementById('coolTop'); if(coolTopEl) coolTopEl.textContent = coolText;
 
+    const pendingOpenStatusText = s.pending_open_status || '-';
+    const pendingOpenEl = document.getElementById('pendingOpenStatus'); if(pendingOpenEl) pendingOpenEl.textContent = pendingOpenStatusText;
+    const pendingOpenTopEl = document.getElementById('pendingOpenStatusTop'); if(pendingOpenTopEl) pendingOpenTopEl.textContent = pendingOpenStatusText;
+
+
     const positions = s.open_positions||[];
+    // Sortir posisi: dari P/L terendah (paling minus) ke tertinggi (paling profit)
+    positions.sort((a, b) => (a.pl || 0) - (b.pl || 0));
+
+    const activeMode = s.tpsm_auto ? 'auto_tpsm' : (s.auto_tpsb_enabled ? 'auto_tpsb' : null);
+    const setups = activeMode ? (s.click_xy || []).filter(c => c.func === activeMode) : [];
+
     const rowHtml = positions.map((p,i)=>{
       const pl = Number(p.pl||0);
       // Map open_exec to friendly labels
-      const ex = (p.open_exec||'').toString().toUpperCase();
-      let openBy = ex||'UNKNOWN';
-      if(openBy==='SR10') openBy='Auto SR';
-      if(openBy==='AUTO60') openBy='Auto60s';
-      if(openBy==='MANUAL') openBy='Manual';
-      return `<tr><td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
-        <td>${fmt(p.entry||0)}</td><td>${fmt(s.price||0)}</td>
-        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td><td>${openBy}</td></tr>`;
+      const openBy = p.open_exec || 'Unknown';
+
+      // Hitung P/L persentase
+      let pl_pct = 0.0;
+      const entry_price = Number(p.entry || 0);
+      const current_price = Number(s.price || 0);
+
+      if (entry_price > 0 && current_price > 0) {
+        if (p.side === 'BUY') {
+            pl_pct = ((current_price - entry_price) / entry_price) * 100.0;
+        } else if (p.side === 'SELL') {
+            pl_pct = ((entry_price - current_price) / entry_price) * 100.0;
+        }
+      }
+
+      // Siapkan tampilan target
+      let tpsTargetHtml = '<td class="mut">-</td>';
+      if (activeMode && i < setups.length) {
+          const setup = setups[i];
+          const posTarget = setup.target_pos_pct || 0;
+          const negTarget = setup.target_neg_pct || 0;
+          tpsTargetHtml = `<td><span class="up">+${fmt(posTarget)}%</span> / <span class="dn">${fmt(negTarget)}%</span></td>`;
+      }
+
+      // Siapkan tampilan status
+      const statusText = p.close_status || '-';
+      const statusClass = p.close_status ? (p.close_status.includes('Gagal') ? 'dn' : 'mut') : 'mut';
+
+      return `<tr>
+        <td><span class="b-close" style="cursor:pointer; padding: 2px 6px; border-radius: 4px; font-weight: bold;" onclick="closeTradeRow(${i})">X</span></td>
+        <td>${i+1}</td><td>${p.side||''}</td><td>${fmt(p.lot||0)}</td>
+        <td class="${pl>0?'up':(pl<0?'dn':'')}">${fmt(pl)}</td>
+        <td class="${pl_pct > 0 ? 'up' : (pl_pct < 0 ? 'dn' : '')}">${pl_pct.toFixed(3)}%</td>
+        ${tpsTargetHtml}
+        <td class="${statusClass}">${statusText}</td>
+        <td>${fmt(p.entry||0)}</td><td>${current_price.toFixed(5)}</td>
+        <td>${openBy}</td></tr>`;
     }).join('');
     const tbOpenMain = tb('tblOpen');
     const tblTop = document.getElementById('tblOpenTop');
     const tbOpenTop = tblTop ? tblTop.querySelector('tbody') : null;
-    const emptyRow = '<tr><td colspan="6" class="mut" style="text-align:center">Tidak ada posisi terbuka.</td></tr>';
+    const emptyRow = '<tr><td colspan="11" class="mut" style="text-align:center">Tidak ada posisi terbuka.</td></tr>';
     if(tbOpenMain){ tbOpenMain.innerHTML = rowHtml || emptyRow; }
     if(tbOpenTop){ tbOpenTop.innerHTML = rowHtml || emptyRow; }
     const tbH = tb('tblHist'); tbH.innerHTML='';
@@ -587,14 +974,7 @@
     }else{
       hist.forEach((r,i)=>{
         const pl = Number(r.profit||0);
-        // Map close reason to friendly label
-        const execRaw = (r.exec||'').toString().toUpperCase();
-        let execDisp = execRaw || 'UNKNOWN';
-        if(execDisp.startsWith('SESSION')) execDisp = 'SESSION';
-        if(execDisp === 'BREAKEVEN') execDisp = 'AUTO BEP';
-        if(execDisp === 'SR10') execDisp = 'Auto SR';
-        if(execDisp === 'AUTO60') execDisp = 'Auto60s';
-        if(execDisp === 'MANUAL') execDisp = 'MANUAL';
+        const execDisp = r.exec || 'UNKNOWN';
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${i+1}</td><td>${r.symbol||''}</td><td>${r.side||''}</td>
           <td>${fmt(r.lot||0)}</td><td>${fmt(r.start||0)}</td><td>${fmt(r.close||0)}</td>
@@ -606,6 +986,10 @@
     (s.quotes||[]).forEach((q)=>{
       const tr = document.createElement('tr');
       tr.innerHTML = `<td style="text-align:left">${q.symbol}</td><td>${fmt(q.bid)}</td><td>${fmt(q.ask)}</td>`;
+      if (q.symbol === s.symbol) {
+        tr.style.backgroundColor = '#dbeafe'; // A more noticeable blue
+        tr.style.fontWeight = 'bold';
+      }
       tr.onclick=()=>post('/api/symbol/select',{symbol:q.symbol}).then(()=>{ pull(); pullCandles(); });
       qBody.appendChild(tr);
     });
@@ -618,33 +1002,146 @@
 
     // render XY setup values (skip while typing)
     try{ if(!window.__XY_EDITING__) renderXY(s); }catch(e){}
+    try{ if(!window.__ACCOUNT_EDITING__) renderAccounts(s); }catch(e){}
+    if (!window.__SR_SETTINGS_EDITING__) {
+        const srSettings = s.sr_settings || {};
+        const srLookbackEl = document.getElementById('srCandleLookback');
+        const srPctEl = document.getElementById('srNearPct');
+        if (srLookbackEl) srLookbackEl.value = (srSettings.candle_lookback || 15);
+        if (srPctEl) srPctEl.value = (srSettings.near_pct || 0.1).toFixed(2);
+    }
+
+    if (!window.__TS_SETTINGS_EDITING__) {
+        const tsValueEl = document.getElementById('tsValueInput');
+        if (tsValueEl) {
+            tsValueEl.value = s.trailing_stop_value || 2000;
+        }
+        const tsCurrencyEl = document.getElementById('tsCurrency');
+        if (tsCurrencyEl) {
+            tsCurrencyEl.textContent = s.currency || 'USD';
+        }
+    }
+
+    try{ if(!window.__SYMBOL_EDITING__) renderSymbols(s); }catch(e){}
   }
 
   // Render XY table rows using values from status.click_xy
   function renderXY(s){
     if(window.__XY_EDITING__) return;
     const body = document.getElementById('xyBody'); if(!body) return;
-    const arr = Array.isArray(s.click_xy)? s.click_xy : [];
+    const arr = Array.isArray(s.click_xy) ? s.click_xy : [];
     let html = '';
-    for(let i=0;i<10;i++){
-      const v = arr[i] || {x:0,y:0};
-      html += `<tr>
-        <td style="text-align:left">Close Trade ${String(i+1).padStart(2,'0')}</td>
-        <td><input type="number" step="1" id="xyx${i}" value="${Number(v.x)||0}" style="width:90px" inputmode="numeric" autocomplete="off"></td>
-        <td><input type="number" step="1" id="xyy${i}" value="${Number(v.y)||0}" style="width:90px" inputmode="numeric" autocomplete="off"></td>
+    for(let i=0; i<arr.length; i++){
+      const v = arr[i] || {title:'', func:'close_row', x:0, y:0, target_neg_pct:0, target_pos_pct:0};
+      const funcOptions = `
+        <option value="close_row" ${v.func === 'close_row' ? 'selected' : ''}>Close Baris</option>
+        <option value="instant_buy" ${v.func === 'instant_buy' ? 'selected' : ''}>Instant Buy</option>
+        <option value="instant_sell" ${v.func === 'instant_sell' ? 'selected' : ''}>Instant Sell</option>
+        <option value="auto_tpsb" ${v.func === 'auto_tpsb' ? 'selected' : ''}>Auto TPSB</option>
+        <option value="auto_tpsm" ${v.func === 'auto_tpsm' ? 'selected' : ''}>Auto TPSM</option>
+        <option value="auto_bep" ${v.func === 'auto_bep' ? 'selected' : ''}>Auto BEP</option>
+        <option value="auto_sr_buy" ${v.func === 'auto_sr_buy' ? 'selected' : ''}>Auto SR Buy</option>
+        <option value="auto_sr_sell" ${v.func === 'auto_sr_sell' ? 'selected' : ''}>Auto SR Sell</option>
+        <option value="auto_m53_buy" ${v.func === 'auto_m53_buy' ? 'selected' : ''}>Auto M53 Buy</option>
+        <option value="auto_m53_sell" ${v.func === 'auto_m53_sell' ? 'selected' : ''}>Auto M53 Sell</option>
+        <option value="auto_close_all" ${v.func === 'auto_close_all' ? 'selected' : ''}>Auto Close All</option>
+      `;
+      html += `<tr data-index="${i}">
+        <td style="text-align:right;">${i + 1}</td>
+        <td style="text-align:left">
+          <span class="b-close" style="cursor:pointer; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: bold;" onclick="clickRow(this)">X</span>
+          <input type="text" class="xy-title" value="${v.title || ''}" style="width:100px; border:1px solid var(--line); border-radius:4px; padding:4px;">
+        </td>
+        <td><input type="number" step="0.001" class="xy-target-neg" value="${Math.abs(Number(v.target_neg_pct)||0).toFixed(3)}" style="width:70px" autocomplete="off"></td>
+        <td><input type="number" step="0.001" class="xy-target-pos" value="${Math.abs(Number(v.target_pos_pct)||0).toFixed(3)}" style="width:70px" autocomplete="off"></td>
+        <td><select class="xy-func" style="padding:4px; border:1px solid var(--line); border-radius:4px;">${funcOptions}</select></td>
+        <td><input type="number" step="1" class="xy-x" value="${Number(v.x)||0}" style="width:70px" inputmode="numeric" autocomplete="off"></td>
+        <td><input type="number" step="1" class="xy-y" value="${Number(v.y)||0}" style="width:70px" inputmode="numeric" autocomplete="off"></td>
+        <td><button class="btn-delete-xy" style="background:none;border:none;color:var(--red);cursor:pointer;font-weight:bold;padding:4px;">Hapus</button></td>
       </tr>`;
     }
     body.innerHTML = html;
     // attach edit guards
-    for(let i=0;i<10;i++){
-      const ix = document.getElementById('xyx'+i);
-      const iy = document.getElementById('xyy'+i);
-      [ix,iy].forEach(inp=>{
-        if(!inp) return;
-        inp.addEventListener('focus', ()=>{ window.__XY_EDITING__ = true; });
-        inp.addEventListener('blur', ()=>{ setTimeout(()=>{ const a=document.activeElement; if(!a || !(a.id||'').startsWith('xy')) window.__XY_EDITING__ = false; }, 150); });
+    body.querySelectorAll('input, select').forEach(inp=>{
+      inp.addEventListener('focus', ()=>{ window.__XY_EDITING__ = true; });
+      inp.addEventListener('blur', ()=>{ 
+        setTimeout(()=>{
+          const a = document.activeElement;
+          // Jangan matikan mode edit jika fokus pindah ke tombol Save atau tombol Tambah
+          if (a && (a.id === 'btnSaveXY' || a.id === 'btnSaveNewXY')) return;
+          if(!a || !a.closest('#xyBody')) window.__XY_EDITING__ = false; 
+        }, 150); 
       });
-    }
+    });
+    body.querySelectorAll('.btn-delete-xy').forEach(btn=>{
+      btn.onclick = (e) => {
+        if (confirm('Yakin ingin menghapus baris ini?')){
+          const tableBody = e.target.closest('tbody');
+          e.target.closest('tr').remove();
+          // Perbaiki penomoran setelah baris dihapus
+          if (tableBody) {
+            const allRows = tableBody.querySelectorAll('tr');
+            allRows.forEach((r, idx) => {
+              const numCell = r.querySelector('td:first-child');
+              if (numCell) numCell.textContent = idx + 1;
+            });
+          }
+          window.__XY_EDITING__ = true; // Tetap dalam mode edit setelah menghapus
+          notify('Baris dihapus dari list. Klik Save untuk menyimpan perubahan.', 'warn');
+        }
+      };
+    });
+  }
+
+  function renderSymbols(s) {
+    const container = document.getElementById('symbolList');
+    if (!container) return;
+    const symbols = s.symbols || [];
+    container.innerHTML = symbols.map(sym => `
+        <div class="symbol-tag" data-symbol="${sym}">
+            <span>${sym}</span>
+            <span class="symbol-tag-delete" title="Remove">&times;</span>
+        </div>
+    `).join('');
+    container.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('focus', () => { window.__SYMBOL_EDITING__ = true; });
+        inp.addEventListener('blur', () => { setTimeout(() => { if (!document.activeElement.closest('#symbolList')) window.__SYMBOL_EDITING__ = false; }, 150); });
+    });
+  }
+
+  function renderAccounts(s) {
+    if (window.__ACCOUNT_EDITING__) return;
+    const body = document.getElementById('accountsBody'); if (!body) return;
+    const accounts = s.mt5_accounts || [];
+    const activeLogin = s.active_mt5_login;
+    let html = '';
+ 
+    accounts.forEach(acc => {
+        const isActive = String(acc.login) === String(activeLogin);
+        const rowStyle = isActive ? 'style="background-color: #dbeafe; font-weight: bold;"' : '';
+        const selectIndicator = isActive
+            ? '<span style="color: var(--green); font-weight: bold; font-size: 16px;">✓</span>'
+            : `<button class="btn-select-acc" data-login="${acc.login}" style="font-size:10px; padding: 2px 6px;">Pilih</button>`;
+ 
+        html += `
+            <tr data-login="${acc.login}" ${rowStyle}>
+                <td style="text-align: center;">${selectIndicator}</td>
+                <td><input type="text" class="acc-alias" value="${acc.alias || ''}" style="width:100px;"></td>
+                <td><input type="number" class="acc-login" value="${acc.login || ''}" style="width:100px;" disabled></td>
+                <td><input type="text" class="acc-server" value="${acc.server || ''}" style="width:120px;"></td>
+                <td style="text-align:center;">
+                    <button class="btn-delete-acc" style="background:none;border:none;color:var(--red);cursor:pointer;font-weight:bold;padding:4px;">Hapus</button>
+                </td>
+            </tr>
+        `;
+    });
+    body.innerHTML = html;
+ 
+    // Attach focus/blur listeners to prevent UI flicker while editing
+    body.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('focus', () => { window.__ACCOUNT_EDITING__ = true; });
+        inp.addEventListener('blur', () => { setTimeout(() => { if (!document.activeElement.closest('#accountsBody')) window.__ACCOUNT_EDITING__ = false; }, 150); });
+    });
   }
 
   async function pull(){
@@ -655,14 +1152,18 @@
       renderDiag(false);
       if(s.online){ pullCandles(); } else { CANDLES = []; drawChart(); }
     }catch(e){
-      setBadge($('#badgeConn'),'OFFLINE','off'); disControls(true);
+      // Hanya update badge, jangan nonaktifkan semua kontrol.
+      // Ini mencegah lockout dari halaman Setup jika koneksi gagal sementara.
+      setBadge($('#badgeConn'),'OFFLINE','off');
+      // Render status offline parsial untuk menonaktifkan tombol trading tapi membiarkan navigasi tetap aktif.
+      renderStatus({ online: false, locked: true, auto_mode: window.__STATUS__?.auto_mode, symbol: window.__STATUS__?.symbol, quotes: window.__STATUS__?.quotes, mt5_accounts: window.__STATUS__?.mt5_accounts, active_mt5_login: window.__STATUS__?.active_mt5_login });
     }
   }
 
-  async function pullCandles(tf='M1', count=120){
+  async function pullCandles(){
     try{
       const sym = (window.__STATUS__ && window.__STATUS__.symbol) || 'XAUUSDc';
-      const data = await get(`/api/candles?symbol=${encodeURIComponent(sym)}&tf=${tf}&count=${count}`);
+      const data = await get(`/api/candles?symbol=${encodeURIComponent(sym)}&tf=${currentChartTf}&count=${candleCount}`);
       CANDLES = data.map(d=>({
         time: typeof d.time==='number'? d.time*1000 : Date.parse(d.time),
         open:+d.open, high:+d.high, low:+d.low, close:+d.close
@@ -673,52 +1174,517 @@
   }
 
   // ---------- Actions ----------
-  $('#btnClose').onclick = ()=>post('/api/action/auto_click_close_all',{})
-    .then(r=>{
-      if(!r.ok){ notify('Auto Click Close All gagal: '+(r.msg || '-'), 'err'); pull(); return; }
-      notify('Auto Click Close All OK: '+(r.msg || 'completed'), 'ok');
-      pull();
+  // Tombol Close All dinonaktifkan sementara untuk perbaikan.
+  // $('#btnClose').onclick = ()=>post('/api/action/auto_click_close_all',{}) 
+  //   .then(r=>notify(r.ok ? ('OK: '+(r.msg||'')) : ('Gagal: '+(r.msg||'')), r.ok?'ok':'err'))
+  //   .catch(e=>notify('Close All error: '+e,'err'));
+
+  // Fungsi baru khusus untuk menutup trade dari tabel posisi terbuka
+  function closeTradeRow(rowIndex) {
+    const allSetups = window.__STATUS__?.click_xy;
+    if (!allSetups || !Array.isArray(allSetups)) {
+      notify('Data setup XY tidak tersedia.', 'err');
+      return;
+    }
+
+    // Pastikan ada setup untuk baris ini (mapping 1:1)
+    if (rowIndex >= allSetups.length) {
+      notify(`Setup untuk baris #${rowIndex + 1} tidak ada di tabel Kordinat XY.`, 'err');
+      return;
+    }
+
+    const setup = allSetups[rowIndex];
+
+    // Pastikan fungsi untuk baris ini adalah 'close_row'
+    if (setup.func !== 'close_row') {
+      notify(`Fungsi untuk setup baris #${rowIndex + 1} bukan 'Close Baris'. Tidak bisa menutup.`, 'warn');
+      return;
+    }
+
+    const x = parseInt(setup.x || '0', 10);
+    const y = parseInt(setup.y || '0', 10);
+
+    if (x <= 0 || y <= 0) {
+      notify(`Koordinat untuk baris #${rowIndex + 1} tidak valid.`, 'err');
+      return;
+    }
+    clickXY(x, y, `Close baris #${rowIndex + 1}`);
+  }
+
+  function clickRow(el) {
+  const row = el.closest('tr');
+  if (!row) return;
+  const x = parseInt(row.querySelector('.xy-x').value || '0', 10);
+  const y = parseInt(row.querySelector('.xy-y').value || '0', 10);
+  
+  if (x <= 0 || y <= 0) {
+    notify('Koordinat X dan Y harus lebih besar dari 0.', 'err');
+    return;
+  }
+  const title = row.querySelector('.xy-title').value || 'Untitled';
+  clickXY(x, y, `Test klik: ${title}`);
+}
+
+function clickXY(x, y, context = 'Manual Click') {
+  post('/api/action/click_xy', { x, y })
+    .then(r => {
+      if (!r.ok) {
+        notify(`${context} Gagal: ` + (r.msg || 'error tidak diketahui'), 'err');
+        return;
+      }
+      notify(`${context} sukses.`, 'ok');
     })
-    .catch(e=>notify('Auto Click Close error: '+e,'err'));
-  $('#btnBE').onclick    = ()=>post('/api/action/breakeven',{})
-    .then(r=>{ notify(r.ok?'Auto BEP OK':'BEP gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
-    .catch(e=>notify('BEP error: '+e,'err'));
+    .catch(e => notify(`${context} Gagal: ` + e, 'err'));
+}
+
   $('#btnAdd').onclick   = ()=>post('/api/action/add',{lot:+$('#lot').value||0.01})
     .then(r=>{ notify(r.ok?'Add OK':'Add gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
     .catch(e=>notify('Add error: '+e,'err'));
-  $('#btnAuto').onclick  = ()=>post('/api/strategy/toggle',{})
+  $('#btnAuto').onclick  = ()=>post('/api/strategy/toggle',{}) 
     .then(()=>{ notify('Mode toggled', 'ok'); pull(); })
     .catch(e=>notify('Toggle error: '+e,'err'));
-  $('#btnBuy').onclick   = ()=>post('/api/action/buy',{lot:+$('#lot').value||0.01})
-    .then(r=>{ notify(r.ok?'Buy OK':'Buy gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
-    .catch(e=>notify('Buy error: '+e,'err'));
-  $('#btnSell').onclick  = ()=>post('/api/action/sell',{lot:+$('#lot').value||0.01})
-    .then(r=>{ notify(r.ok?'Sell OK':'Sell gagal: '+(r.msg||'-'), r.ok?'ok':'err'); pull(); })
-    .catch(e=>notify('Sell error: '+e,'err'));
+
+  // --- Refactored Trade Controls for Mobile & Desktop ---
+  const lotMobile = document.getElementById('lot');
+  const lotDesktop = document.getElementById('lotDesktop');
+  
+  // Sync lot inputs
+  lotMobile.oninput = () => { if(lotDesktop) lotDesktop.value = lotMobile.value; };
+  if(lotDesktop) lotDesktop.oninput = () => { lotMobile.value = lotDesktop.value; };
+
+  // Buy action
+  const buyAction = () => {
+      const buyCoord = window.__STATUS__?.click_xy?.find(c => c.func === 'instant_buy');
+      if (buyCoord && buyCoord.x > 0 && buyCoord.y > 0) {
+        clickXY(buyCoord.x, buyCoord.y, 'Instant Buy (Clicker)');
+      } else {
+        notify("Setup 'Instant Buy' tidak ditemukan atau tidak valid di halaman Setup.", 'warn');
+      }
+  };
+  document.getElementById('btnBuy').onclick = buyAction;
+  const btnBuyDesktop = document.getElementById('btnBuyDesktop');
+  if(btnBuyDesktop) btnBuyDesktop.onclick = buyAction;
+
+  // Sell action
+  const sellAction = () => {
+      const sellCoord = window.__STATUS__?.click_xy?.find(c => c.func === 'instant_sell');
+      if (sellCoord && sellCoord.x > 0 && sellCoord.y > 0) {
+        clickXY(sellCoord.x, sellCoord.y, 'Instant Sell (Clicker)');
+      } else {
+        notify("Setup 'Instant Sell' tidak ditemukan atau tidak valid di halaman Setup.", 'warn');
+      }
+  };
+  document.getElementById('btnSell').onclick = sellAction;
+  const btnSellDesktop = document.getElementById('btnSellDesktop');
+  if(btnSellDesktop) btnSellDesktop.onclick = sellAction;
+  // --- End Refactor ---
+
+  const btnSetSymbol = document.getElementById('btnSetSymbol');
+  if (btnSetSymbol) {
+    btnSetSymbol.onclick = () => {
+        const symSelect = document.getElementById('symSelect');
+        const newSymbol = symSelect.value;
+        window.__SYM_SELECT_ACTIVE__ = false; // Release lock before request
+        post('/api/symbol/select', { symbol: newSymbol }).then(() => {
+            const check = document.getElementById('symbolSetCheck');
+            check.style.display = 'inline';
+            setTimeout(() => { check.style.display = 'none'; }, 2000);
+            pull(); pullCandles();
+        }).catch(e => {
+            notify('Gagal set simbol: ' + e, 'err');
+        });
+    };
+  };
+
+  const symSelectEl = document.getElementById('symSelect');
+  if (symSelectEl) {
+    symSelectEl.onfocus = () => { window.__SYM_SELECT_ACTIVE__ = true; };
+    symSelectEl.onblur = () => {
+        // Use a timeout to allow the 'Set' button's click event to fire first
+        setTimeout(() => {
+            if (document.activeElement.id !== 'btnSetSymbol') {
+                window.__SYM_SELECT_ACTIVE__ = false;
+            }
+        }, 200);
+    };
+  };
 
   $('#swTPSM').onchange = (e)=>post('/api/strategy/tpsm',{on:e.target.checked}).then(pull);
-  $('#swTPSB').onchange = (e)=>post('/api/strategy/tpsb',{on:e.target.checked}).then(pull);
   $('#swABE').onchange  = (e)=>post('/api/strategy/abe',{on:e.target.checked}).then(pull);
-  const swSR = document.getElementById('swSR'); if(swSR){ swSR.onchange = (e)=>post('/api/strategy/sr',{on:e.target.checked}).then(pull); }
-  const swA60 = document.getElementById('swA60'); if(swA60){ swA60.onchange = (e)=>post('/api/strategy/auto60',{on:e.target.checked}).then(pull); }
-
+  const swAutoTPSB = document.getElementById('swAutoTPSB'); if(swAutoTPSB){ swAutoTPSB.onchange = (e)=>post('/api/strategy/autotpsb',{on:e.target.checked}).then(pull); }
+  const swRSBuy = document.getElementById('swRSBuy'); if(swRSBuy){ swRSBuy.onchange = (e)=>post('/api/strategy/sr',{on:e.target.checked}).then(pull); }
+  const swRSSell = document.getElementById('swRSSell'); if(swRSSell){ swRSSell.onchange = (e)=>post('/api/strategy/srsell',{on:e.target.checked}).then(pull); }
+  const swM53Buy = document.getElementById('swM53Buy'); if(swM53Buy){ swM53Buy.onchange = (e)=>post('/api/strategy/m53buy',{on:e.target.checked}).then(pull); }
+  const swM53Sell = document.getElementById('swM53Sell'); if(swM53Sell){ swM53Sell.onchange = (e)=>post('/api/strategy/m53sell',{on:e.target.checked}).then(pull); }
+  const swTS = document.getElementById('swTS'); if(swTS){ swTS.onchange = (e)=>post('/api/strategy/trailingstop',{on:e.target.checked}).then(pull); }
+  
   const btnSaveXY = document.getElementById('btnSaveXY');
   if(btnSaveXY){
     btnSaveXY.onclick = async ()=>{
-      try{
-        const slots = [];
-        for(let i=0;i<10;i++){
-          const x = parseInt(document.getElementById('xyx'+i).value||'0',10)||0;
-          const y = parseInt(document.getElementById('xyy'+i).value||'0',10)||0;
-          slots.push({x,y});
+        try {
+            const body = document.getElementById('xyBody');
+            const slots = [];
+            body.querySelectorAll('tr').forEach(row => {
+                const title = row.querySelector('.xy-title').value;
+                const func = row.querySelector('.xy-func').value;
+                const neg_pct = parseFloat(row.querySelector('.xy-target-neg').value || '0');
+                const pos_pct = parseFloat(row.querySelector('.xy-target-pos').value || '0');
+                const x = parseInt(row.querySelector('.xy-x').value || '0', 10);
+                const y = parseInt(row.querySelector('.xy-y').value || '0', 10);
+                slots.push({title, func, x, y, target_neg_pct: neg_pct, target_pos_pct: pos_pct});
+            });
+
+            const r = await post('/api/setup/xy', {slots});
+ 
+             if (r && r.ok && Array.isArray(r.saved)) {
+                 if (window.__STATUS__) window.__STATUS__.click_xy = r.saved;
+                 renderXY({ click_xy: r.saved }); // Langsung render data baru dari server.
+                 window.__XY_EDITING__ = false; // Non-aktifkan mode edit SETELAH UI di-render.
+                 notify('XY saved', 'ok');
+             } else {
+                 window.__XY_EDITING__ = false; // Tetap non-aktifkan jika gagal
+                 notify('Save XY Gagal: ' + (r.msg || 'Error tidak diketahui'), 'err');
+                 setTimeout(()=>pull(), 200); // Sinkronisasi ulang jika gagal.
+             }
+        } catch (e) {
+            window.__XY_EDITING__ = false; // Pastikan juga di-set jika ada network error.
+            notify('Save XY error: ' + e, 'err');
         }
-        const r = await post('/api/setup/xy',{slots});
-        window.__XY_EDITING__ = false;
-        notify('XY saved', 'ok');
-        setTimeout(()=>pull(), 200);
-      }catch(e){ notify('Save XY error: '+e, 'err'); }
     };
   }
+  
+  // Logic for new XY form
+  const btnAddNewXY = document.getElementById('btnAddNewXY');
+  if(btnAddNewXY) {
+    btnAddNewXY.onclick = () => {
+      const form = document.getElementById('formAddNewXY');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    };
+  }
+  const btnSaveNewXY = document.getElementById('btnSaveNewXY');
+  if(btnSaveNewXY) {
+    btnSaveNewXY.onclick = () => {
+      const title = document.getElementById('newXYTitle').value || 'Untitled';
+      const func = document.getElementById('newXYFunc').value;
+      const funcText = document.getElementById('newXYFunc').options[document.getElementById('newXYFunc').selectedIndex].text;
+      const neg_pct = document.getElementById('newXYTargetNeg').value || 0;
+      const pos_pct = document.getElementById('newXYTargetPos').value || 0;
+      const x = document.getElementById('newXYX').value || 0;
+      const y = document.getElementById('newXYY').value || 0;
+
+      const body = document.getElementById('xyBody');
+      const newSlotNumber = body.querySelectorAll('tr').length + 1;
+      const newRow = document.createElement('tr');
+      const funcOptionsHTML = `
+        <option value="close_row">Close Baris</option>
+        <option value="instant_buy">Instant Buy</option>
+        <option value="instant_sell">Instant Sell</option>
+        <option value="auto_tpsb">Auto TPSB</option>
+        <option value="auto_tpsm">Auto TPSM</option>
+        <option value="auto_bep">Auto BEP</option>
+        <option value="auto_sr_buy">Auto SR Buy</option>
+        <option value="auto_sr_sell">Auto SR Sell</option>
+        <option value="auto_m53_buy">Auto M53 Buy</option>
+        <option value="auto_m53_sell">Auto M53 Sell</option>
+        <option value="auto_close_all">Auto Close All</option>
+      `.replace(`value="${func}"`, `value="${func}" selected`);
+
+      newRow.innerHTML = `
+        <td style="text-align:right;">${newSlotNumber}</td>
+        <td style="text-align:left"><span class="b-close" style="cursor:pointer; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: bold;" onclick="clickRow(this)">X</span><input type="text" class="xy-title" value="${title}" style="width:100px; border:1px solid var(--line); border-radius:4px; padding:4px;">
+        <td><input type="number" step="0.001" class="xy-target-neg" value="${Number(neg_pct).toFixed(3)}" style="width:70px" autocomplete="off"></td>
+        <td><input type="number" step="0.001" class="xy-target-pos" value="${Number(pos_pct).toFixed(3)}" style="width:70px" autocomplete="off"></td>
+        <td><select class="xy-func" style="padding:4px; border:1px solid var(--line); border-radius:4px;">${funcOptionsHTML}</select></td>
+        <td><input type="number" step="1" class="xy-x" value="${x}" style="width:70px" inputmode="numeric" autocomplete="off"></td>
+        <td><input type="number" step="1" class="xy-y" value="${y}" style="width:70px" inputmode="numeric" autocomplete="off"></td>
+        <td><button class="btn-delete-xy" style="background:none;border:none;color:var(--red);cursor:pointer;font-weight:bold;padding:4px;">Hapus</button></td>
+      `;
+      body.appendChild(newRow);
+
+      // --- FIX: Logika untuk menangani baris yang baru ditambahkan ---
+      // 1. Aktifkan "mode edit" untuk mencegah pembaruan otomatis menimpa UI.
+      window.__XY_EDITING__ = true;
+
+      // 2. Tambahkan event listener ke baris baru agar berfungsi seperti baris lainnya.
+      newRow.querySelectorAll('input, select').forEach(inp=>{
+        inp.addEventListener('focus', ()=>{ window.__XY_EDITING__ = true; });
+        inp.addEventListener('blur', ()=>{ setTimeout(()=>{ const a=document.activeElement; if(!a || !a.closest('#xyBody')) window.__XY_EDITING__ = false; }, 150); });
+      });
+      const deleteBtn = newRow.querySelector('.btn-delete-xy');
+      if (deleteBtn) {
+        deleteBtn.onclick = (e) => {
+          if (confirm('Yakin ingin menghapus baris ini?')){
+            const tableBody = e.target.closest('tbody');
+            e.target.closest('tr').remove();
+            // Perbaiki penomoran setelah baris dihapus
+            if (tableBody) {
+              const allRows = tableBody.querySelectorAll('tr');
+              allRows.forEach((r, idx) => {
+                const numCell = r.querySelector('td:first-child');
+                if (numCell) numCell.textContent = idx + 1;
+              });
+            }
+            // Tetap dalam mode edit setelah menghapus
+            window.__XY_EDITING__ = true;
+            notify('Baris dihapus dari list. Klik Save untuk menyimpan perubahan.', 'warn');
+          }
+        };
+      }
+      // --- Akhir dari FIX ---
+
+      notify('Data baru ditambahkan ke list. Jangan lupa klik Save.', 'ok');
+      // Clear form
+      document.getElementById('newXYTitle').value = ''; document.getElementById('newXYX').value = ''; document.getElementById('newXYY').value = ''; document.getElementById('newXYTargetNeg').value = ''; document.getElementById('newXYTargetPos').value = '';
+    };
+  }
+
+  // --- Account Management Logic ---
+  const btnAddAccount = document.getElementById('btnAddAccount');
+  if (btnAddAccount) {
+    btnAddAccount.onclick = () => {
+        const alias = document.getElementById('accAlias').value;
+        const login = document.getElementById('accLogin').value;
+        const password = document.getElementById('accPassword').value;
+        const server = document.getElementById('accServer').value;
+
+        if (!alias || !login || !password || !server) {
+            notify('Semua field harus diisi untuk menambah akun.', 'err');
+            return;
+        }
+
+        const body = document.getElementById('accountsBody');
+        // Cek duplikasi ID Login sebelum menambahkan
+        if (body.querySelector(`tr[data-login="${login}"]`)) {
+            notify(`Akun dengan ID Login ${login} sudah ada dalam daftar.`, 'err');
+            return;
+        }
+
+        const newRow = document.createElement('tr');
+        newRow.dataset.login = login;
+        // Simpan password di atribut data tersembunyi
+        newRow.dataset.password = password;
+
+        newRow.innerHTML = `
+            <td style="text-align: center;"><button class="btn-select-acc" data-login="${login}" style="font-size:10px; padding: 2px 6px;">Pilih</button></td>
+            <td><input type="text" class="acc-alias" value="${alias}" style="width:100px;"></td>
+            <td><input type="number" class="acc-login" value="${login}" style="width:100px;" disabled></td>
+            <td><input type="text" class="acc-server" value="${server}" style="width:120px;"></td>
+            <td style="text-align:center;">
+                <button class="btn-delete-acc" style="background:none;border:none;color:var(--red);cursor:pointer;font-weight:bold;padding:4px;">Hapus</button>
+            </td>
+        `;
+        body.appendChild(newRow);
+        window.__ACCOUNT_EDITING__ = true;
+        notify('Akun ditambahkan ke list. Jangan lupa klik "Save Semua Akun".', 'ok');
+        // Clear form and re-attach listeners for the new inputs
+        document.getElementById('accAlias').value = ''; document.getElementById('accLogin').value = '';
+        document.getElementById('accPassword').value = ''; document.getElementById('accServer').value = '';
+        newRow.querySelectorAll('input').forEach(inp => {
+            inp.addEventListener('focus', () => { window.__ACCOUNT_EDITING__ = true; });
+            inp.addEventListener('blur', () => { setTimeout(() => { if (!document.activeElement.closest('#accountsBody')) window.__ACCOUNT_EDITING__ = false; }, 150); });
+        });
+    };
+  }
+
+  const btnSaveAccounts = document.getElementById('btnSaveAccounts');
+  if (btnSaveAccounts) {
+    btnSaveAccounts.onclick = async () => {
+        try {
+            const accounts = [];
+            document.querySelectorAll('#accountsBody tr').forEach(row => {
+                const accountData = {
+                    alias: row.querySelector('.acc-alias').value,
+                    login: row.querySelector('.acc-login').value,
+                    server: row.querySelector('.acc-server').value,
+                };
+                // Hanya kirim password jika ada di data-attribute (untuk baris baru)
+                const password = row.dataset.password;
+                if (password) {
+                    accountData.password = password;
+                }
+                accounts.push(accountData);
+            });
+
+             await post('/api/setup/accounts', { accounts });            
+             notify('Daftar akun berhasil disimpan.', 'ok');
+             // Panggil pull() untuk menyegarkan data, lalu matikan mode edit.
+             await pull(); 
+             window.__ACCOUNT_EDITING__ = false; 
+        } catch (e) {
+            notify('Gagal menyimpan akun: ' + e, 'err');
+             window.__ACCOUNT_EDITING__ = false;
+        }
+    };
+  }
+
+  // Event delegation for account actions
+  const accountsTableBody = document.getElementById('accountsBody');
+  if (accountsTableBody) {
+    accountsTableBody.addEventListener('click', async (e) => {
+        const target = e.target;
+        if (target.classList.contains('btn-select-acc')) {
+            const login = target.dataset.login;
+            if (confirm(`Anda akan beralih ke akun ${login}. Aplikasi akan mencoba menyambung ulang. Lanjutkan?`)) {
+                target.textContent = '...';
+                target.disabled = true;
+                try {
+                    const r = await post('/api/setup/accounts/select', { login });
+                    notify(r.msg || 'Perintah diterima, menyambungkan ulang...', 'info');
+                    setTimeout(pull, 2000); // Beri waktu untuk reconnect
+                } catch (err) {
+                    notify('Gagal beralih akun: ' + err, 'err');
+                    target.textContent = 'Pilih';
+                    target.disabled = false;
+                }
+            }
+        } else if (target.classList.contains('btn-delete-acc')) {
+            const rowCount = accountsTableBody.querySelectorAll('tr').length;
+            if (rowCount <= 1) {
+                notify('Tidak bisa menghapus akun terakhir. Harus ada minimal satu akun.', 'err');
+                return;
+            }
+            if (confirm('Yakin ingin menghapus akun ini dari daftar?')) {
+                target.closest('tr').remove();
+                window.__ACCOUNT_EDITING__ = true;
+            }
+        }
+    });
+  }
+
+  // --- Symbol Management Logic ---
+  const btnAddSymbol = document.getElementById('btnAddSymbol');
+  const newSymbolInput = document.getElementById('newSymbolInput');
+  const symbolListContainer = document.getElementById('symbolList');
+
+  if (btnAddSymbol && newSymbolInput && symbolListContainer) {
+    const addSymbol = () => {
+        const newSymbol = newSymbolInput.value.trim().toUpperCase();
+        if (!newSymbol) return;
+
+        // Check for duplicates
+        if (symbolListContainer.querySelector(`[data-symbol="${newSymbol}"]`)) {
+            notify(`Symbol '${newSymbol}' sudah ada di daftar.`, 'warn');
+            return;
+        }
+
+        const tag = document.createElement('div');
+        tag.className = 'symbol-tag';
+        tag.dataset.symbol = newSymbol;
+        tag.innerHTML = `<span>${newSymbol}</span><span class="symbol-tag-delete" title="Remove">&times;</span>`;
+        symbolListContainer.appendChild(tag);
+        newSymbolInput.value = '';
+        window.__SYMBOL_EDITING__ = true;
+        notify(`'${newSymbol}' ditambahkan. Klik 'Save Symbol List' untuk menyimpan.`, 'info');
+    };
+
+    btnAddSymbol.onclick = addSymbol;
+    newSymbolInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addSymbol(); } };
+
+    symbolListContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('symbol-tag-delete')) {
+            e.target.parentElement.remove();
+            window.__SYMBOL_EDITING__ = true;
+            notify('Symbol dihapus dari list. Klik Save untuk menyimpan.', 'warn');
+        }
+    });
+  }
+
+  const btnSaveSymbols = document.getElementById('btnSaveSymbols');
+  if (btnSaveSymbols) {
+    btnSaveSymbols.onclick = async () => {
+        try {
+            const symbols = Array.from(document.querySelectorAll('#symbolList .symbol-tag')).map(tag => tag.dataset.symbol);
+            const r = await post('/api/setup/symbols', { symbols });
+             if (r && r.ok && Array.isArray(r.saved)) {
+                 if (window.__STATUS__) window.__STATUS__.symbols = r.saved;
+                 renderSymbols({ symbols: r.saved });
+                 window.__SYMBOL_EDITING__ = false;
+                 notify('Daftar simbol berhasil disimpan.', 'ok');
+             } else {
+                 window.__SYMBOL_EDITING__ = false;
+                 notify('Gagal menyimpan daftar simbol: ' + (r.msg || 'Error'), 'err');
+             }
+        } catch (e) {
+            notify('Gagal menyimpan daftar simbol: ' + e, 'err');
+             window.__SYMBOL_EDITING__ = false;
+        }
+    };
+  }
+
+  // --- SR Settings Logic ---
+  ['srCandleLookback', 'srNearPct'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+          el.onfocus = () => { window.__SR_SETTINGS_EDITING__ = true; };
+          el.onblur = () => { setTimeout(() => { if (!document.activeElement.closest('.box')) window.__SR_SETTINGS_EDITING__ = false; }, 150); };
+      }
+  });
+
+  // --- TS Settings Logic ---
+  ['tsValueInput'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+          el.onfocus = () => { window.__TS_SETTINGS_EDITING__ = true; };
+          el.onblur = () => { setTimeout(() => { 
+              // Don't lose edit mode if focus moves to the save button
+              if (document.activeElement.id !== 'btnSaveTS') {
+                window.__TS_SETTINGS_EDITING__ = false; 
+              }
+          }, 150); };
+      }
+  });
+
+  const btnSaveSR = document.getElementById('btnSaveSRSettings');
+  if (btnSaveSR) {
+      btnSaveSR.onclick = async () => {
+          const candle_lookback = parseInt(document.getElementById('srCandleLookback').value);
+          const near_pct = parseFloat(document.getElementById('srNearPct').value);
+          try {
+              await post('/api/setup/sr', { candle_lookback, near_pct });
+              window.__SR_SETTINGS_EDITING__ = false;
+              notify('Pengaturan SR berhasil disimpan.', 'ok');
+              pull();
+          } catch (e) {
+              notify('Gagal menyimpan pengaturan SR: ' + e, 'err');
+          }
+      };
+  }
+
+  const btnSaveTS = document.getElementById('btnSaveTS');
+  if (btnSaveTS) {
+      btnSaveTS.onclick = async () => {
+          const ts_val = parseFloat(document.getElementById('tsValueInput').value);
+          try {
+              await post('/api/strategy/trailingstop', { value: ts_val });
+              window.__TS_SETTINGS_EDITING__ = false;
+              notify('Pengaturan Trailing Stop berhasil disimpan.', 'ok');
+              pull();
+          } catch (e) {
+              notify('Gagal menyimpan pengaturan Trailing Stop: ' + e, 'err');
+          }
+      };
+  }
+
+  // Chart controls
+  document.querySelectorAll('.tf-btn').forEach(btn => {
+      btn.onclick = () => {
+          document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentChartTf = btn.dataset.tf;
+          pullCandles(); // Refresh with new TF
+      };
+  });
+
+  const zoomInBtn = document.getElementById('zoomIn');
+  if (zoomInBtn) zoomInBtn.onclick = () => {
+      candleCount = Math.max(30, candleCount - 20); // Zoom in = fewer candles
+      pullCandles();
+  };
+  const zoomOutBtn = document.getElementById('zoomOut');
+  if (zoomOutBtn) zoomOutBtn.onclick = () => {
+      candleCount = Math.min(300, candleCount + 20); // Zoom out = more candles
+      pullCandles();
+  };
 
   // ---------- Mobile Navigation ----------
   const hamburger = document.getElementById('hamburger');
