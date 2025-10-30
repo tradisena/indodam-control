@@ -57,13 +57,7 @@ SETUP = {
         {"title": f"Close Trade {i+1:02d}", "func": "close_row", "x": 0, "y": 0, "target_neg_pct": 0.0, "target_pos_pct": 0.0}
         for i in range(10)
     ],
-    "sr_config": {
-        "active_mode": "mode_01",
-        "modes": {
-            "mode_01": { "name": "Auto SR 01", "candle_lookback": 15, "near_pct": 10.0 },
-            "mode_02": { "name": "Auto SR 02", "candle_lookback": 30, "near_pct": 20.0 }
-        }
-    },
+    "sr": {"candle_lookback": 15, "near_pct": 10.0},
     "daily_target": 10.0, "daily_min": -10.0,
     "session": {
         "profit_target": 3.0,
@@ -79,21 +73,6 @@ def persist_load():
         if os.path.exists(PERSIST_FILE):
             with open(PERSIST_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
-            # --- MIGRASI SR ke SR_CONFIG ---
-            if 'sr' in data and 'sr_config' not in data:
-                print("[PERSIST] Migrating legacy 'sr' settings to 'sr_config'...", flush=True)
-                old_sr = data.get('sr', {})
-                lookback = old_sr.get('candle_lookback', 15)
-                near_pct = old_sr.get('near_pct', 10.0)
-                data['sr_config'] = {
-                    "active_mode": "mode_01",
-                    "modes": {
-                        "mode_01": { "name": "Auto SR 01", "candle_lookback": lookback, "near_pct": near_pct },
-                        "mode_02": { "name": "Auto SR 02", "candle_lookback": 30, "near_pct": 20.0 }
-                    }
-                }
-                del data['sr']
 
             # Lakukan migrasi data click_xy
             if 'click_xy' in data and isinstance(data['click_xy'], list):
@@ -503,15 +482,7 @@ def price_in_trigger_zone(price, thresholds):
 
 # ========== SR-gate / Auto-entry ==========# ========== SR auto-trade ========== 
 def compute_sr_thresholds(sym):
-    # --- Gunakan struktur sr_config yang baru ---
-    sr_conf = SETUP.get("sr_config", {})
-    active_mode_key = sr_conf.get("active_mode", "mode_01")
-    active_settings = sr_conf.get("modes", {}).get(active_mode_key, {})
-
-    lookback = int(active_settings.get("candle_lookback", 15))
-    near_pct_val = float(active_settings.get("near_pct", 10.0))
-    # --- Akhir perubahan ---
-
+    lookback = int(SETUP["sr"]["candle_lookback"])
     # Ambil lebih banyak data untuk memastikan lookback terpenuhi
     data = candles(sym, "M1", lookback + 15)
     if len(data) < lookback:
@@ -525,7 +496,7 @@ def compute_sr_thresholds(sym):
     mid = support + rng * 0.5
     
     # Ambil nilai persentase dari setup dan konversi ke desimal
-    trigger_pct = near_pct_val / 100.0
+    trigger_pct = float(SETUP["sr"]["near_pct"]) / 100.0
     top = resistance - rng * trigger_pct
     bottom = support + rng * trigger_pct
     buffer_buy = max(1e-6, support * SR_PRICE_BUFFER_PCT)
@@ -1316,17 +1287,6 @@ def check_and_reset_trade_direction_lock(sym):
         if STATE.get("m5_locked_direction") is not None:
             print("[M5 Auto-Set] Siklus selesai. Kunci arah M5 dilepas.", flush=True)
             STATE["m5_locked_direction"] = None
-            
-            # Kembalikan near_pct ke nilai asli jika sebelumnya diubah
-            if STATE.get("sr_original_near_pct") is not None:
-                sr_conf = SETUP.get("sr_config", {})
-                active_mode_key = sr_conf.get("active_mode", "mode_01")
-                active_settings = sr_conf.get("modes", {}).get(active_mode_key)
-                if active_settings:
-                    print(f"[M5 Auto-Set] Mengembalikan 'near_pct' ke nilai asli: {STATE['sr_original_near_pct']} untuk mode {active_mode_key}", flush=True)
-                    active_settings['near_pct'] = STATE['sr_original_near_pct']
-                    STATE['sr_original_near_pct'] = None
-                    persist_save()
 
 def auto_cross_trade(sym):
     """
@@ -1423,69 +1383,36 @@ def enforce_m5_direction_lock():
 def auto_toggle_sr_on_m5(sym):
     """
     Sets the M5 lock direction at the start of a new M5 candle if no positions are open.
-    It has two modes:
-    - Jarak Lebar: If 2 previous M5 candles are the same color, set near_pct to 90.
-    - Normal: Otherwise, based on 1 previous candle, and near_pct is normal.
     The enforcement is handled by enforce_m5_direction_lock().
     """
     # 1. Master condition: only run if no trades are open AND no lock is active.
     if open_count(sym) > 0 or STATE.get("m5_locked_direction") is not None:
         return
 
-    # 2. Get the last 3 M5 candles for 2-candle lookback.
-    m5_candles = candles(sym, "M5", 3)
-    if len(m5_candles) < 3:
+    # 2. Get the last 2 M5 candles.
+    m5_candles = candles(sym, "M5", 2)
+    if len(m5_candles) < 2:
         return  # Not enough data
 
     # 3. Identify current and previous candles.
     current_candle = m5_candles[-1]
     prev_candle_1 = m5_candles[-2]
-    prev_candle_2 = m5_candles[-3]
 
     # 4. Only run this logic ONCE per new candle.
     if STATE.get('last_m5_toggle_ts') == current_candle['time']:
         return
     
-    # 5. Determine colors of the two previous candles
+    # 5. Determine color of the previous candle
     is_prev1_red = prev_candle_1['close'] < prev_candle_1['open']
     is_prev1_green = prev_candle_1['close'] > prev_candle_1['open']
-    is_prev2_red = prev_candle_2['close'] < prev_candle_2['open']
-    is_prev2_green = prev_candle_2['close'] > prev_candle_2['open']
 
     new_direction = None
-    is_wide_mode = False
-    config_changed = False
-
-    # 6. Check for 2-candle special "Jarak Lebar" condition
-    if is_prev1_red and is_prev2_red:
-        new_direction = "SELL"  # 2 red -> SELL
-        is_wide_mode = True
-        print("[M5 Auto-Set] 2 candle MERAH terdeteksi. Mode Jarak Lebar -> SELL.", flush=True)
-    elif is_prev1_green and is_prev2_green:
-        new_direction = "BUY"   # 2 green -> BUY
-        is_wide_mode = True
-        print("[M5 Auto-Set] 2 candle HIJAU terdeteksi. Mode Jarak Lebar -> BUY.", flush=True)
     
-    # 7. If not in special mode, apply normal logic
-    else:
-        if is_prev1_red:
-            new_direction = "BUY"   # 1 red -> BUY
-        elif is_prev1_green:
-            new_direction = "SELL"  # 1 green -> SELL
-
-    # 8. Manage near_pct based on mode
-    if is_wide_mode:
-        if STATE.get("sr_original_near_pct") is None:
-            sr_conf = SETUP.get("sr_config", {})
-            active_mode_key = sr_conf.get("active_mode", "mode_01")
-            active_settings = sr_conf.get("modes", {}).get(active_mode_key)
-            if active_settings:
-                original_pct = active_settings.get('near_pct')
-                STATE['sr_original_near_pct'] = original_pct
-                active_settings['near_pct'] = 90.0
-                print(f"[M5 Auto-Set] Mode Jarak Lebar aktif. Menyimpan near_pct asli ({original_pct}) dan set ke 90.0 untuk mode {active_mode_key}", flush=True)
-                config_changed = True
-    # The restoration is handled by check_and_reset_trade_direction_lock
+    # 7. Apply normal logic
+    if is_prev1_red:
+        new_direction = "BUY"   # 1 red -> BUY
+    elif is_prev1_green:
+        new_direction = "SELL"  # 1 green -> SELL
 
     # 9. Apply changes if a direction was determined
     if new_direction:
@@ -1493,9 +1420,6 @@ def auto_toggle_sr_on_m5(sym):
         print(f"[M5 Auto-Set] Arah trading dikunci ke '{new_direction}' berdasarkan candle M5.", flush=True)
         # Enforce will save if buy/sell enabled status changes
         enforce_m5_direction_lock()
-        # But if only near_pct changed, we need to save explicitly
-        if config_changed:
-            persist_save()
     
     # 10. Mark this candle as processed
     STATE['last_m5_toggle_ts'] = current_candle['time']
@@ -1599,7 +1523,6 @@ def _status_payload_offline():
         "sr_buy_last_ts": SR_TRIGGER["buy"]["last_ts"], "sr_sell_last_ts": SR_TRIGGER["sell"]["last_ts"],
         "sr_last_ts": max(SR_TRIGGER["buy"]["last_ts"], SR_TRIGGER["sell"]["last_ts"]),
         "sr_support": SR_STATE["support"], "sr_resistance": SR_STATE["resistance"],
-        "sr_config": SETUP.get("sr_config", {}),
         "sr_top": SR_STATE["top"], "sr_bottom": SR_STATE["bottom"], "sr_mid": SR_STATE["mid"],
         "currency": "USD" # Default currency
     }
@@ -1711,12 +1634,10 @@ def api_status():
             "history_today": history,
             "quotes": quotes,
             "sr_buy_armed": SR_TRIGGER["buy"]["armed"], "sr_sell_armed": SR_TRIGGER["sell"]["armed"],
-            "sr_buy_last_ts": SR_TRIGGER["buy"]["last_ts"], "sr_sell_last_ts": SR_TRIGGER["sell"]["last_ts"],
-            "sr_last_ts": max(SR_TRIGGER["buy"]["last_ts"], SR_TRIGGER["sell"]["last_ts"]),
-            "sr_support": SR_STATE["support"], "sr_resistance": SR_STATE["resistance"],
-            "sr_config": SETUP.get("sr_config", {}),
-            "sr_top": SR_STATE["top"], "sr_bottom": SR_STATE["bottom"], "sr_mid": SR_STATE["mid"],
-        })
+                    "sr_buy_last_ts": SR_TRIGGER["buy"]["last_ts"], "sr_sell_last_ts": SR_TRIGGER["sell"]["last_ts"],
+                    "sr_last_ts": max(SR_TRIGGER["buy"]["last_ts"], SR_TRIGGER["sell"]["last_ts"]),
+                    "sr_support": SR_STATE["support"], "sr_resistance": SR_STATE["resistance"],
+                    "sr_top": SR_STATE["top"], "sr_bottom": SR_STATE["bottom"], "sr_mid": SR_STATE["mid"],        })
     except Exception as e:
         # jangan 500 â€” selalu balas JSON aman
         print("[/api/status] EXC:", e, flush=True)
@@ -1979,31 +1900,16 @@ def api_setup_xy_save():
 def api_setup_sr():
     data = request.get_json(force=True) or {}
     if isinstance(data, dict):
-        # Dapatkan konfigurasi SR saat ini
-        sr_config = SETUP.get("sr_config", {})
-
-        # Update mode yang aktif jika ada di data
-        if "active_mode" in data and data["active_mode"] in ["mode_01", "mode_02"]:
-            sr_config["active_mode"] = data["active_mode"]
-            print(f"[SETUP] SR Active Mode changed to: {sr_config['active_mode']}", flush=True)
-
-        # Update settings untuk masing-masing mode jika ada di data
-        if "modes" in data and isinstance(data["modes"], dict):
-            for mode_key, new_settings in data["modes"].items():
-                if mode_key in sr_config.get("modes", {}):
-                    # Ambil pengaturan mode saat ini
-                    current_mode_settings = sr_config["modes"][mode_key]
-                    # Update hanya field yang ada di request
-                    if "candle_lookback" in new_settings:
-                        current_mode_settings["candle_lookback"] = int(new_settings["candle_lookback"])
-                    if "near_pct" in new_settings:
-                        current_mode_settings["near_pct"] = float(new_settings["near_pct"])
-                    print(f"[SETUP] SR {mode_key} settings updated.", flush=True)
-
-        SETUP["sr_config"] = sr_config
+        if "candle_lookback" in data:
+            SETUP["sr"]["candle_lookback"] = int(data["candle_lookback"])
+        if "near_pct" in data:
+            SETUP["sr"]["near_pct"] = float(data["near_pct"])
         persist_save()
-        return jsonify({"ok": True, "saved": SETUP["sr_config"]})
-    return jsonify({"ok": False, "msg": "Invalid payload"}), 400
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "msg": "invalid-payload"}), 400
+
+
+
 
 @app.route("/api/setup/accounts", methods=["POST"])
 def api_setup_accounts_save():
@@ -2076,3 +1982,4 @@ def boot():
 if __name__ == "__main__":
     boot()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
